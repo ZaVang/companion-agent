@@ -25,21 +25,25 @@
 - 检索实现分裂（brain.py 用 strength，retrieve.py 不用）
 - 衰减一刀切（所有记忆 0.995）
 
-### Phase 2: 核心实现
+### Phase 2: 核心实现 ✅
 
-- [ ] 实现 Elo 竞争机制的完整逻辑
-  - [ ] 设计 NeuronCell 的"战斗力"属性
-  - [ ] 实现检索时的竞争逻辑（信号竞争 → 战斗力计算 → Elo 更新）
-  - [ ] 参考 Elo 算法：K-factor + 胜率期望值
+- [x] 实现 Elo 竞争机制的完整逻辑
+  - [x] 设计 NeuronCell 的"战斗力"属性 → `elo.py::get_combat_power()`
+  - [x] 实现检索时的竞争逻辑 → `elo.py::update_after_retrieval()`
+  - [x] K-factor 动态调整（高频激活 16，低频激活 64，默认 32）
   
-- [ ] 设计动态衰减系统
-  - [ ] 为不同 event_type 设计不同的基础衰减率
-  - [ ] 添加"冲击力"字段影响衰减速度
-  - [ ] 实现 `calculate_decay_rate(neuron, impact_score)` 函数
+- [x] 设计动态衰减系统
+  - [x] 不同 event_type 基础衰减率：chat=0.995, perception=0.990, thought=0.992, reflection=0.998, experience=0.985
+  - [x] 冲击力(impact_score) 影响衰减速度 → `decay.py::calculate_decay_rate()`
+  - [x] 公式：`adjusted_rate = base_rate + impact_factor × (1 - base_rate)`
   
-- [ ] 统一检索逻辑
-  - [ ] 让 retrieve.py 使用 strength × similarity × decay 评分
-  - [ ] 合并 brain.py 和 retrieve.py 的检索函数
+- [x] 统一检索逻辑
+  - [x] 创建 `unified_retriever.py` 整合评分逻辑
+  - [x] 综合评分：`score = weighted(similarity, elo, decay, recency)`
+
+- [x] LongMemEval 接口对齐
+  - [x] 创建 `api_schema.py` 定义 5 大能力 API
+  - [x] Information Extraction / Multi-Session Reasoning / Temporal Reasoning / Knowledge Updates / Abstention
 
 ### Phase 3: Reflection 自动化
 
