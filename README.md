@@ -46,3 +46,12 @@ elo是可以用来刻画这种竞争的，某种程度上就相当于上面提�
 这样的合理之处在于，engram有一个summary信息，当我们通过summary检索到engram的时候，如果我们发现这个检索的summary不足以完成任务的时候我们需要进一步对engram的细节信息进行检索。因为engram本身是一个有主题的事件，通过这样的操作可以更集中在与engram主题相关的神经元上。
 
 举例来说，就好像我的engram是我上周去看了eason的演唱会。如果每个人都问我他安可唱了什么歌，那么相应的神经元elo就会提高。这说明当我需要检索我去看了eason演唱会这个事件的时候，有很大概率别人会继续问我他安可唱了什么。这提供了一种更主动的检索方式。
+
+---
+
+## 项目文档
+
+- `docs/plans/SPRINT.md` - 当前 Sprint 任务清单
+- `docs/plans/pitfalls.md` - 陷阱知识库
+- `docs/orch/` - 迭代执行文件（plan.md, gen_status.md, eval.md）
+
