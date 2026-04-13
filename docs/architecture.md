@@ -199,7 +199,86 @@ class EpisodicMemory:
 
 ### 3.3 核心机制
 
-#### Elo 竞争机制
+#### Elo 竞争机制 (elo.py)
+
+```python
+class EloCompetitor:
+    """Elo 竞争系统"""
+    
+    # K-factor 动态调整
+    HIGH_ACTIVITY_K = 16    # 高频激活神经元
+    DEFAULT_K_FACTOR = 32   # 默认
+    LOW_ACTIVITY_K = 64     # 低频激活神经元
+    
+    def get_combat_power(self, event_id):
+        """战斗力 = sqrt(Elo) * log(activation_count + 1)"""
+        ...
+    
+    def update_after_retrieval(self, retrieved_ids, all_candidate_ids):
+        """检索后更新所有候选神经元的 Elo"""
+        ...
+```
+
+**核心公式**:
+- 战斗力: `power = sqrt(elo) × log(activations + 1)`
+- 期望胜率: `E = 1 / (1 + 10^((R_opponent - R_player) / 400))`
+
+#### 动态衰减系统 (decay.py)
+
+```python
+# 基础衰减率（每天）
+BASE_DECAY_RATES = {
+    'chat': 0.995,           # 对话
+    'perception': 0.990,     # 感知
+    'thought': 0.992,        # 思考
+    'reflection': 0.998,     # 反思
+    'experience': 0.985,     # 体验
+}
+
+def calculate_decay_rate(event_type, impact_score):
+    """adjusted_rate = base_rate + impact_score × (1 - base_rate)"""
+    base = BASE_DECAY_RATES[event_type]
+    return base + impact_score * (1 - base)
+
+def apply_decay(strength, decay_rate, time_days):
+    """strength = strength × decay_rate^time_days"""
+    return strength * (decay_rate ** time_days)
+```
+
+#### 统一检索系统 (unified_retriever.py)
+
+```python
+class UnifiedRetriever:
+    """
+    综合评分公式:
+    score = weighted(similarity, elo_strength, decay_factor, recency)
+    """
+    
+    def retrieve(self, neurons, query_embedding, ...):
+        """执行统一检索"""
+        ...
+```
+
+#### 记忆稳定性系统 (stability.py)
+
+```python
+class StabilityManager:
+    """集体稳定性机制"""
+    
+    def calculate_engram_stability(self, engram):
+        """
+        稳定性 = aggregate(member_contributions)
+        - 代表神经元有 1.5x 加成
+        - 支持多种聚合方法
+        """
+        ...
+    
+    def check_activation_threshold(self, engram, threshold=0.3):
+        """检查是否达到激活阈值"""
+        ...
+```
+
+#### Elo 竞争机制（伪代码）
 
 ```python
 def elo_competition(query_embedding, candidate_neurons):
@@ -223,7 +302,7 @@ def elo_competition(query_embedding, candidate_neurons):
         loser.strength -= k_factor * expected_win_rate
 ```
 
-#### 动态衰减系统
+#### 动态衰减系统（伪代码）
 
 ```python
 # 记忆类型 → 基础衰减率
