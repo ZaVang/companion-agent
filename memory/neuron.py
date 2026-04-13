@@ -34,6 +34,16 @@ class NeuronCell(BaseModel):
     event_type: Literal['chat', 'perception', 'thought', 'reflection', 'experience']
     create_time: DateTime
     strength: float = 1.0
+    
+    # === Sprint 1 Phase 2 新增字段 ===
+    # 衰减率（由 decay.py 动态计算）
+    decay_rate: float = 0.995
+    # 冲击力评分 [0, 1]，影响衰减速度
+    impact_score: float = 0.5
+    # 上次衰减时间，用于批量计算衰减
+    last_decay_at: Optional[DateTime] = None
+    
+    # === 原有字段 ===
     actor: str
     audience: Optional[List[str]] = None
     outgoing_connections: Set[Connection] = Field(default_factory=set)
@@ -68,6 +78,61 @@ class NeuronCell(BaseModel):
         """Remove the directed connection from another neuron to this neuron, if connected."""
         self.incoming_connections = {conn for conn in self.incoming_connections if conn.target_id != other.event_id}
         other.outgoing_connections = {conn for conn in other.outgoing_connections if conn.target_id != self.event_id}
+    
+    # === Sprint 1 Phase 2: 衰减与强度更新方法 ===
+    
+    def apply_decay(self, reference_time: Optional[datetime] = None) -> float:
+        """
+        应用衰减，更新 strength
+        
+        Args:
+            reference_time: 参考时间，默认为当前时间
+        
+        Returns:
+            衰减后的新 strength
+        """
+        if reference_time is None:
+            reference_time = datetime.now()
+        
+        # 计算时间差（天）
+        if self.last_decay_at:
+            if isinstance(self.last_decay_at, str):
+                last_time = datetime.strptime(self.last_decay_at, '%Y-%m-%d %H:%M:%S')
+            else:
+                last_time = self.last_decay_at
+            time_days = (reference_time - last_time).total_seconds() / (24 * 3600)
+        else:
+            time_days = 0.0
+        
+        # 应用衰减公式: strength = strength * decay_rate^time_days
+        self.strength *= (self.decay_rate ** time_days)
+        
+        # 更新上次衰减时间
+        self.last_decay_at = reference_time
+        
+        return self.strength
+    
+    def boost_strength(self, factor: float = 1.1) -> float:
+        """
+        增强神经元强度（用于检索命中时）
+        
+        Args:
+            factor: 增强因子
+        
+        Returns:
+            增强后的 strength
+        """
+        # 使用对数增长防止无限膨胀
+        self.strength = np.log(np.exp(self.strength) + factor - 1)
+        return self.strength
+    
+    def update_decay_rate(self, decay_rate: float) -> None:
+        """更新衰减率"""
+        self.decay_rate = max(0.98, min(0.9999, decay_rate))
+    
+    def update_impact_score(self, impact_score: float) -> None:
+        """更新冲击力评分"""
+        self.impact_score = max(0.0, min(1.0, impact_score))
 
 
 def calculate_connection_strength(neuron1: NeuronCell, 
