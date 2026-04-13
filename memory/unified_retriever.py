@@ -18,7 +18,7 @@ import numpy as np
 
 from memory.neuron import NeuronCell
 from memory.engram import Engram
-from memory.elo import EloCompetitor, calculate_combat_score
+from memory.elo import EloCompetition, calculate_combat_score
 from memory.decay import calculate_decay_rate, DecayScheduler, apply_decay
 
 
@@ -152,11 +152,11 @@ class UnifiedRetriever:
     def __init__(
         self,
         retrieval_config: Optional[RetrievalConfig] = None,
-        elo_competitor: Optional[EloCompetitor] = None,
+        elo_competitor: Optional[EloCompetition] = None,
         decay_scheduler: Optional[DecayScheduler] = None
     ):
         self.config = retrieval_config or RetrievalConfig()
-        self.elo = elo_competitor or EloCompetitor()
+        self.elo = elo_competitor or EloCompetition()
         self.decay = decay_scheduler or DecayScheduler()
     
     def register_neuron(

@@ -43,6 +43,12 @@ class NeuronCell(BaseModel):
     # 上次衰减时间，用于批量计算衰减
     last_decay_at: Optional[DateTime] = None
     
+    # === Sprint 2 新增字段 ===
+    # 激活阈值 [0, 1]，只有超过此阈值才能被想起
+    activation_threshold: float = 0.3
+    # 是否为稳固记忆（代表神经元）
+    is_consolidated: bool = False
+    
     # === 原有字段 ===
     actor: str
     audience: Optional[List[str]] = None
@@ -133,6 +139,52 @@ class NeuronCell(BaseModel):
     def update_impact_score(self, impact_score: float) -> None:
         """更新冲击力评分"""
         self.impact_score = max(0.0, min(1.0, impact_score))
+    
+    def is_retrievable(self, cue_strength: float = 1.0) -> bool:
+        """
+        判断神经元是否可以被想起（可检索）
+        
+        可检索条件: effective_strength >= activation_threshold
+        
+        effective_strength = strength * cue_strength * consolidation_bonus
+        
+        Args:
+            cue_strength: 线索强度 [0, 1]，外部提供的激活线索强度
+        
+        Returns:
+            是否可检索
+        """
+        # 稳固记忆有加成
+        consolidation_bonus = 1.5 if self.is_consolidated else 1.0
+        
+        # 有效强度 = 强度 * 线索强度 * 稳固加成
+        effective_strength = self.strength * cue_strength * consolidation_bonus
+        
+        return effective_strength >= self.activation_threshold
+    
+    def get_retrievability_score(self, cue_strength: float = 1.0) -> float:
+        """
+        获取可检索性评分
+        
+        Args:
+            cue_strength: 线索强度
+        
+        Returns:
+            retrievability = min(1.0, effective_strength / threshold)
+        """
+        consolidation_bonus = 1.5 if self.is_consolidated else 1.0
+        effective_strength = self.strength * cue_strength * consolidation_bonus
+        
+        if self.activation_threshold <= 0:
+            return 1.0
+        
+        return min(1.0, effective_strength / self.activation_threshold)
+    
+    def mark_consolidated(self):
+        """标记为稳固记忆"""
+        self.is_consolidated = True
+        # 稳固记忆阈值可以适当降低
+        self.activation_threshold = max(0.1, self.activation_threshold * 0.8)
 
 
 def calculate_connection_strength(neuron1: NeuronCell, 
