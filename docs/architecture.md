@@ -354,3 +354,89 @@ Query → Embedding → 候选神经元
 
 ---
 
+
+---
+
+## 七、学习规则：Hebbian 可塑性
+
+### 7.1 为什么选择 Hebbian Learning
+
+**传统深度学习 vs Hebbian**：
+
+| 维度 | 深度学习 | Hebbian |
+|------|---------|---------|
+| 训练方式 | 反向传播、梯度下降 | 局部规则、前向传播 |
+| 数据需求 | 大量标注数据 | 无需标注（无监督） |
+| 在线学习 | 批量更新 | 实时更新 |
+| 记忆形成 | 权重冻结后固定 | 持续可塑 |
+| 生物学合理性 | 低 | 高（模拟突触可塑性） |
+
+**Hebbian 的优势**：
+1. **One-shot learning**：不需要反复训练
+2. **在线更新**：每次交互都在学习
+3. **联想记忆**：自动形成关联网络
+4. **无监督**：不需要标签
+
+### 7.2 Hebbian 规则在 Engram 中的应用
+
+**连接强度更新**：
+```python
+def hebbian_update(neuron_a, neuron_b, learning_rate=0.1):
+    """
+    Hebbian 规则：一起激活的神经元，连接加强
+    
+    Δw = η × A_a × A_b
+    """
+    if neuron_a.active and neuron_b.active:
+        delta = learning_rate * neuron_a.activation * neuron_b.activation
+        connection = neuron_a.get_connection_to(neuron_b)
+        connection.strength = min(connection.strength + delta, MAX_STRENGTH)
+```
+
+**与 Elo 结合**：
+- Hebbian 决定连接是否形成/加强
+- Elo 决定检索时的竞争力
+- 两者独立但互补
+
+### 7.3 H-Mem 网络（参考）
+
+来自论文《Hebbian Memory Networks》：
+- 存储模式：key × value → Hebbian 更新关联矩阵
+- 召回模式：query key → 检索关联矩阵 → 返回 value
+- 可实现 one-shot 联想记忆
+
+---
+
+## 八、自主进化框架
+
+### 8.1 借鉴 Karpathy autoresearch
+
+**核心循环**：
+```
+修改代码 → 运行测试 → 评估指标 → 保留/丢弃 → 重复
+```
+
+**应用于 Engram**：
+```
+1. 读取 SPRINT.md（当前目标）
+2. 读取 pitfalls.md（已知陷阱）
+3. 修改目标文件（elo.py, decay.py 等）
+4. 运行 benchmark（LongMemEval 子集）
+5. 记录 metrics（Accuracy, Recall@k）
+6. 如果改进 → git commit + push
+7. 如果退化 → 回滚 + 更新 pitfalls
+8. 重复直到 Sprint 完成
+```
+
+### 8.2 实现要点
+
+| 要素 | autoresearch | Engram 项目 |
+|------|-------------|-------------|
+| 修改目标 | train.py | memory/elo.py, memory/decay.py |
+| 指令文件 | program.md | SPRINT.md, pitfalls.md |
+| 时间预算 | 5 分钟/实验 | 100 轮对话/实验 |
+| 评估指标 | val_bpb | QA Accuracy, Recall@k |
+| 版本控制 | git | git（已配置） |
+
+---
+

@@ -70,3 +70,50 @@
 
 ---
 
+
+---
+
+## 方法论陷阱
+
+### [方法论] 不要用传统训练思维
+- **错误思维**: 需要大量数据训练神经元网络
+- **正确思维**: Hebbian 学习是无监督、在线更新的
+- **原因**: 每次交互本身就是"训练"，不需要额外的训练阶段
+
+### [方法论] 不要用单一指标评估
+- **错误做法**: 只看 QA Accuracy
+- **正确做法**: Recall@k + NDCG@k + QA Accuracy + Efficiency
+- **原因**: 不同 Sprint 关注不同能力，需要多维度评估
+
+### [方法论] 不要跳过 benchmark 测试
+- **错误做法**: 凭感觉认为"应该变好了"
+- **正确做法**: 每次修改后运行 benchmark，记录具体数值
+- **原因**: 直觉不可靠，数据才是证据
+
+---
+
+## Benchmark 相关
+
+### [Benchmark] LongMemEval 的 5 大能力
+1. **Information Extraction** - 从长对话中提取信息
+2. **Multi-Session Reasoning** - 跨会话整合
+3. **Temporal Reasoning** - 时间感知
+4. **Knowledge Updates** - 知识更新
+5. **Abstention** - 识别未知
+
+### [Benchmark] MemoryAgentBench 的 4 大能力
+1. **Accurate Retrieval** - 精准检索
+2. **Test-Time Learning** - 运行时学习
+3. **Long-Range Understanding** - 长程理解
+4. **Conflict Resolution** - 冲突解决
+
+### [Benchmark] 评测指标选择
+| Sprint | 主要指标 | 原因 |
+|--------|----------|------|
+| Sprint 1 | Recall@k | 关注检索质量 |
+| Sprint 2 | QA Accuracy | 关注问答质量 |
+| Sprint 3 | Efficiency | 关注效率 |
+| Sprint 4 | Multi-hop | 关注推理能力 |
+
+---
+
