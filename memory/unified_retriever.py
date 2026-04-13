@@ -20,6 +20,7 @@ from memory.neuron import NeuronCell
 from memory.engram import Engram
 from memory.elo import EloCompetition, calculate_combat_score
 from memory.decay import calculate_decay_rate, DecayScheduler, apply_decay
+from memory.utils import now as utc_now, from_naive, ensure_aware
 
 
 # ============== 配置常量 ==============
@@ -87,7 +88,7 @@ def calculate_recency_factor(
         时间因子 [0, 1]
     """
     if reference_time is None:
-        reference_time = datetime.now()
+        reference_time = utc_now()
     
     days_diff = (reference_time - event_timestamp).total_seconds() / (24 * 3600)
     
@@ -205,7 +206,7 @@ class UnifiedRetriever:
             (score, breakdown_dict)
         """
         if reference_time is None:
-            reference_time = datetime.now()
+            reference_time = utc_now()
         
         # 获取 Elo 战斗力
         elo_strength = self.elo.get_combat_power(neuron.event_id)
@@ -271,7 +272,7 @@ class UnifiedRetriever:
             按评分排序的检索结果
         """
         if reference_time is None:
-            reference_time = datetime.now()
+            reference_time = utc_now()
         
         if not neurons:
             return []
@@ -359,7 +360,7 @@ class UnifiedRetriever:
             {neuron_id: new_strength}
         """
         if reference_time is None:
-            reference_time = datetime.now()
+            reference_time = utc_now()
         
         updates = {}
         for neuron in neurons:

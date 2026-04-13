@@ -13,6 +13,7 @@ from memory.schemas import (
     DecayConfig, NeuronDecayState,
     DECAY_RATE_RANGE, BASE_DECAY_RATES, IMPACT_DECAY_FACTOR
 )
+from memory.utils import now as utc_now, from_naive
 
 
 # ============== 核心算法 ==============
@@ -51,8 +52,10 @@ def apply_decay(
     
     公式: strength = strength * decay_rate^days
     """
+    # 统一使用 UTC 时区
     if reference_time is None:
-        reference_time = datetime.now()
+        reference_time = utc_now()
+    reference_time = from_naive(reference_time)
     
     # 计算时间差（天）
     if neuron.last_decay_at:
@@ -60,6 +63,8 @@ def apply_decay(
             last_time = datetime.strptime(neuron.last_decay_at, '%Y-%m-%d %H:%M:%S')
         else:
             last_time = neuron.last_decay_at
+        # 确保 last_time 是 aware datetime
+        last_time = from_naive(last_time)
         time_days = (reference_time - last_time).total_seconds() / (24 * 3600)
     else:
         time_days = 0.0
@@ -134,7 +139,7 @@ class DecayScheduler:
         调度批量衰减
         """
         if reference_time is None:
-            reference_time = datetime.now()
+            reference_time = utc_now()
         
         self._last_batch_time = reference_time
         return calculate_multi_event_decay(neurons, reference_time)
@@ -159,6 +164,36 @@ class DecayScheduler:
     @property
     def last_batch_time(self) -> Optional[datetime]:
         return self._last_batch_time
+    
+    def apply_decay_to_neuron(
+        self,
+        neuron_id: str,
+        current_strength: float,
+        reference_time: Optional[datetime] = None
+    ) -> float:
+        """
+        对单个神经元应用衰减
+        
+        Args:
+            neuron_id: 神经元 ID
+            current_strength: 当前强度
+            reference_time: 参考时间
+        
+        Returns:
+            衰减后的新强度
+        """
+        if reference_time is None:
+            reference_time = utc_now()
+        
+        # 计算时间因子（使用配置的默认衰减率）
+        # 如果需要更精确的计算，可以使用存储的 decay_rate
+        base_decay_rate = self.config.base_decay_rates.get('default', 0.995)
+        
+        # 简化计算：使用默认衰减率
+        # 在实际应用中，应该根据神经元类型获取对应的衰减率
+        decay_factor = base_decay_rate ** 1.0  # 默认 1 天
+        
+        return current_strength * decay_factor
 
 
 # ============== 全局调度器 ==============

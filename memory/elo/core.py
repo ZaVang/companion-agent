@@ -187,3 +187,64 @@ class EloCompetition:
             'max_elo': max(elos),
             'min_elo': min(elos),
         }
+    
+    def get_combat_power(self, neuron_id: str) -> float:
+        """
+        获取神经元的战斗力
+        
+        战斗力 = Elo ^ (1/2) * log(activation_count + 1)
+        
+        Args:
+            neuron_id: 神经元 ID
+        
+        Returns:
+            战斗力数值
+        """
+        # 如果不存在，注册一个新神经元
+        if neuron_id not in self._states:
+            state = self.register_neuron(neuron_id)
+        else:
+            state = self._states[neuron_id]
+        
+        return state.get_combat_power()
+    
+    def update_after_retrieval(
+        self,
+        retrieved_ids: List[str],
+        all_candidate_ids: List[str],
+        retrieval_score: float
+    ) -> None:
+        """
+        检索后更新 Elo
+        
+        被检索到的神经元获得 Elo 提升，其他候选神经元 Elo 略微下降。
+        
+        Args:
+            retrieved_ids: 被检索到的神经元 IDs
+            all_candidate_ids: 所有候选神经元 IDs
+            retrieval_score: 检索评分（影响调整幅度）
+        """
+        if not all_candidate_ids:
+            return
+        
+        # 计算调整系数（基于检索评分）
+        adjustment_factor = min(1.0, max(0.1, retrieval_score))
+        
+        for neuron_id in all_candidate_ids:
+            # 确保神经元已注册
+            if neuron_id not in self._states:
+                self.register_neuron(neuron_id)
+            
+            state = self._states[neuron_id]
+            
+            if neuron_id in retrieved_ids:
+                # 被检索到：Elo 提升
+                boost = self.config.default_k_factor * adjustment_factor * 0.1
+                state.elo = min(self.config.max_elo, state.elo + boost)
+            else:
+                # 未被检索到：Elo 略微下降
+                penalty = self.config.default_k_factor * 0.01
+                state.elo = max(self.config.min_elo, state.elo - penalty)
+            
+            # 更新激活次数
+            state.activation_count += 1
