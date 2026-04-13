@@ -31,7 +31,7 @@ BASE_DECAY_RATES: Dict[str, float] = {
 }
 
 # 冲击力对衰减率的影响系数
-IMPACT_DECAY_FACTOR: float = 0.1  # impact_score * factor * decay_rate
+IMPACT_DECAY_FACTOR: float = 0.5  # 调整：impact_score * factor * decay_rate
 
 
 # ============== 数据模型 ==============
@@ -40,7 +40,7 @@ class DecayConfig(BaseModel):
     """衰减系统配置"""
     decay_rate_range: Tuple[float, float] = DECAY_RATE_RANGE
     base_decay_rates: Dict[str, float] = Field(default_factory=lambda: BASE_DECAY_RATES.copy())
-    impact_decay_factor: float = IMPACT_DECAY_FACTOR
+    impact_decay_factor: float = Field(default=0.5)  # 提高冲击力影响
 
 
 class NeuronDecayState(BaseModel):
@@ -96,6 +96,13 @@ def calculate_decay_rate(
     
     这是暴露给外部的主要接口函数。
     
+    公式: adjusted_rate = base_rate + impact_score * (1 - base_rate)
+    
+    设计原理:
+    - impact_score=0 时，衰减率为 base_rate
+    - impact_score=1 时，衰减率为 1.0（永不衰减）
+    - 线性插值
+    
     Args:
         event_type: 事件类型 ('chat', 'perception', 'thought', 'reflection', 'experience')
         impact_score: 冲击力评分 [0, 1]
@@ -110,11 +117,9 @@ def calculate_decay_rate(
     # 获取基础衰减率
     base_rate = config.base_decay_rates.get(event_type, 0.995)
     
-    # 计算冲击力调整
-    impact_factor = impact_score * config.impact_decay_factor
-    
-    # 调整公式
-    adjusted = base_rate + impact_factor * (1 - base_rate)
+    # 调整公式：冲击力越高，衰减越慢
+    # impact_score=1 时衰减率为 1.0（永不衰减）
+    adjusted = base_rate + impact_score * (1 - base_rate)
     
     # 限制范围
     min_rate, max_rate = config.decay_rate_range

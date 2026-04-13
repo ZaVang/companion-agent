@@ -1,6 +1,6 @@
 # Sprint 1: 核心机制补全
 
-**状态**: 进行中
+**状态**: Phase 2 完成 ✅
 **开始时间**: 2026-04-13
 **预计完成**: 2026-04-20
 
@@ -57,19 +57,44 @@
   - [ ] reflection 结果写入记忆网络
   - [ ] 更新相关神经元连接
 
-### Phase 4: 测试与验证
+### Phase 4: 测试与验证 ✅
 
-- [ ] 编写 Elo 竞争机制测试用例
-- [ ] 编写动态衰减测试用例
-- [ ] 模拟"差点被撞"场景（高冲击力，慢衰减）
-- [ ] 模拟"每天遛狗"场景（低冲击力，快衰减）
+- [x] 编写 Elo 竞争机制测试用例 (19 tests)
+- [x] 编写动态衰减测试用例
+- [x] 模拟"差点被撞"场景（高冲击力，慢衰减）
+- [x] 模拟"每天遛狗"场景（低冲击力，快衰减）
+
+---
+
+## Sprint 2: 记忆稳定性
+
+**状态**: 已完成 ✅
+**开始时间**: 2026-04-14
+
+### 任务清单
+
+- [x] 实现集体稳定性机制
+  - [x] `stability.py::calculate_engram_stability()` - 成员强度聚合
+  - [x] 支持多种聚合方法：arithmetic, harmonic, geometric, max, min
+  
+- [x] 设计激活阈值系统
+  - [x] `stability.py::check_activation_threshold()` - 检查是否达到激活阈值
+  - [x] `stability.py::suggest_neurons_for_reinforcement()` - 建议需要增强的神经元
+  
+- [x] 优化代表神经元稳定性
+  - [x] 代表神经元有 1.5x 稳定性加成
+  - [x] `StabilityManager` 批量管理
+
+### Sprint 2 测试结果
+
+- 20 个测试全部通过
 
 ---
 
 ## 验收命令
 
 ```bash
-# 1. 运行单元测试
+# 1. 运行所有测试
 cd /app/data/companion-agent && python -m pytest tests/ -v
 
 # 2. 验证 Elo 竞争机制
@@ -86,7 +111,33 @@ rate = calculate_decay_rate(event_type='chat', impact_score=0.9)
 assert rate > 0.99, 'High impact should decay slowly'
 print('Dynamic decay OK')
 "
+
+# 4. 验证稳定性系统
+python -c "
+from memory.stability import StabilityManager, calculate_engram_stability
+print('Stability mechanism OK')
+"
+
+# 5. 验证 LongMemEval 接口
+python -c "
+from memory.api_schema import AddMemoryRequest, RetrieveMemoryRequest
+print('LongMemEval API schema OK')
+"
 ```
+
+---
+
+## 新增文件
+
+| 文件 | 描述 |
+|------|------|
+| `memory/elo.py` | Elo 竞争机制实现 |
+| `memory/decay.py` | 动态衰减系统实现 |
+| `memory/unified_retriever.py` | 统一检索系统 |
+| `memory/stability.py` | 记忆稳定性系统 |
+| `memory/api_schema.py` | LongMemEval 兼容 API |
+| `tests/test_sprint1_phase2.py` | Sprint 1 Phase 2 测试 |
+| `tests/test_sprint2.py` | Sprint 2 测试 |
 
 ---
 
@@ -95,6 +146,7 @@ print('Dynamic decay OK')
 1. **Elo K-factor 选择**: 初始值 32，根据神经元激活频率动态调整
 2. **衰减率范围**: 0.98 ~ 0.9999（快衰减 ~ 极慢衰减）
 3. **冲击力评分**: 0.0 ~ 1.0，由 LLM 或用户标注
+4. **稳定性聚合**: 默认使用 arithmetic mean，可切换 harmonic/geometric
 
 ---
 
