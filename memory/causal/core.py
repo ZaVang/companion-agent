@@ -5,7 +5,7 @@
 """
 
 from typing import Dict, List, Tuple, Set, Optional
-from pydantic import BaseModel, Field, UUID1
+from pydantic import BaseModel, Field, UUID1, ConfigDict
 from datetime import datetime
 from collections import defaultdict
 
@@ -215,5 +215,4 @@ class CausalGraph(BaseModel):
             "avg_confidence": sum(e.confidence for e in self.edges.values()) / len(self.edges) if self.edges else 0
         }
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)

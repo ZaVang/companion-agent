@@ -5,7 +5,7 @@
 """
 
 from typing import Dict, List, Tuple, Set, Optional
-from pydantic import BaseModel, Field, UUID1
+from pydantic import BaseModel, Field, ConfigDict
 from collections import defaultdict
 import uuid
 
@@ -123,8 +123,7 @@ class CoOccurrenceMatrix(BaseModel):
         
         return normalized
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 def build_cooccurrence_from_sequence(

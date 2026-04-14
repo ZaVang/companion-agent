@@ -1,32 +1,31 @@
 from typing_extensions import Annotated
 from datetime import datetime, time, date
-from pydantic import BeforeValidator ,PlainSerializer, Field, BaseModel
+from pydantic import PlainSerializer, BaseModel
 from typing import Literal, Union
 from enum import Enum
 from zoneinfo import ZoneInfo
 from utils.common import DEFAULT_AREA
 
+# Note: defaults are handled by Pydantic Field() when used in model fields,
+# not by Annotated metadata (Field inside Annotated is ignored by Pydantic V2)
 Time = Annotated[
     time,
-    Field(default=time(0, 0, 0)),
+    PlainSerializer(lambda v, _: v.isoformat() if v else None),
 ]
 
 Date = Annotated[
     date,
-    Field(default=date(2023, 1, 1)),
+    PlainSerializer(lambda v, _: v.isoformat() if v else None),
 ]
 
-##TODO：应该直接用一个pydantic类来定义
 DateTime = Annotated[
     datetime,
-    PlainSerializer(lambda v, _: v.strftime('%Y-%m-%d %H:%M:%S')),
-    Field(default_factory=lambda: datetime.now(ZoneInfo(DEFAULT_AREA))),
+    PlainSerializer(lambda v, _: v.strftime('%Y-%m-%d %H:%M:%S') if v else None),
 ]
 
 DateTimeString = Annotated[
     datetime,
-    PlainSerializer(lambda v, _: v.timestamp()),
-    Field(default_factory=lambda: datetime.now(ZoneInfo(DEFAULT_AREA))),
+    PlainSerializer(lambda v, _: v.timestamp() if v else None),
 ]
 
 # 一些消息Content类型的Schema
@@ -46,10 +45,7 @@ class RichTextContent(BaseModel):
     content: str
 
 
-MessageContent = Annotated[
-    Union[
-        TextContent,
-        RichTextContent,
-    ],
-    Field(None, description="消息Content类型"),
+MessageContent = Union[
+    TextContent,
+    RichTextContent,
 ]

@@ -6,7 +6,7 @@
 
 import uuid
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, UUID1
+from pydantic import BaseModel, Field, UUID1, ConfigDict
 from datetime import datetime
 
 
@@ -96,8 +96,7 @@ class ActivationSequence(BaseModel):
     def __len__(self) -> int:
         return len(self.events)
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class SequenceDatabase(BaseModel):

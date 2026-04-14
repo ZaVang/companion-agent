@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import List, Dict, Set, Union
 from functools import lru_cache
-from pydantic import BaseModel, UUID1, Field
+from pydantic import BaseModel, UUID1, Field, ConfigDict
 import numpy as np
 import uuid
 from text2vec import SentenceModel
@@ -80,5 +80,4 @@ class EmbeddingManager(BaseModel):
         registry_as_uuid = set(uuid.UUID(u) for u in registry_as_str)
         return cls(registry=registry_as_uuid)
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)

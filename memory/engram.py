@@ -1,5 +1,5 @@
 from typing import List, Dict, Set, Literal, Union, Optional
-from pydantic import BaseModel, Field, UUID1, validator
+from pydantic import BaseModel, Field, UUID1, field_validator, ConfigDict
 import uuid
 from zoneinfo import ZoneInfo
 from datetime import datetime
@@ -29,7 +29,8 @@ class Engram(BaseModel):
     actor: List[str]
     audience: Optional[List[str]] = None
     
-    @validator('time', pre=True, always=True)
+    @field_validator('time', mode='before')
+    @classmethod
     def parse_create_time(cls, v):
         if isinstance(v, str):
             naive_datetime = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
@@ -191,15 +192,15 @@ class RegistryMetadata(BaseModel):
     audience: Optional[List[str]] = None
     scope: Literal['full', 'partial'] = 'partial'
     
-    @validator('time', pre=True, always=True)
+    @field_validator('time', mode='before')
+    @classmethod
     def parse_create_time(cls, v):
         if isinstance(v, str):
             naive_datetime = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
             return naive_datetime.replace(tzinfo=ZoneInfo(DEFAULT_AREA))
-        return v 
+        return v
     
-    class Config:
-        arbitrary_types_allowed=True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
             
 
 class EngramManager(BaseModel):

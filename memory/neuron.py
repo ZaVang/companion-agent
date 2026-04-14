@@ -1,7 +1,7 @@
 import uuid
 import numpy as np
 from typing import Literal, Optional, Set, List
-from pydantic import BaseModel, Field, UUID1, validator
+from pydantic import BaseModel, Field, UUID1, field_validator
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -15,7 +15,8 @@ class Connection(BaseModel):
     target_id: UUID1
     create_time: DateTime
     
-    @validator('create_time', pre=True, always=True)
+    @field_validator('create_time', mode='before')
+    @classmethod
     def parse_create_time(cls, v):
         if isinstance(v, str):
             naive_datetime = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
@@ -64,7 +65,8 @@ class NeuronCell(BaseModel):
     outgoing_connections: Set[Connection] = Field(default_factory=set)
     incoming_connections: Set[Connection] = Field(default_factory=set)
     
-    @validator('create_time', pre=True, always=True)
+    @field_validator('create_time', mode='before')
+    @classmethod
     def parse_create_time(cls, v):
         if isinstance(v, str):
             naive_datetime = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')

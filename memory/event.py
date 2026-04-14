@@ -1,7 +1,7 @@
 from pathlib import Path
 from typing import Callable, Dict, List, Union, Literal, Optional
 from typing_extensions import Annotated
-from pydantic import BaseModel, UUID1, Field, root_validator, validator
+from pydantic import BaseModel, UUID1, Field, field_validator, model_validator, ConfigDict
 from functools import partial
 import uuid
 from datetime import timedelta, datetime
@@ -27,15 +27,15 @@ class BaseEvent(BaseModel):
     def text(self) -> str:
         return self.content
     
-    @validator('create_time', pre=True, always=True)
+    @field_validator('create_time', mode='before')
+    @classmethod
     def parse_create_time(cls, v):
         if isinstance(v, str):
             naive_datetime = datetime.strptime(v, '%Y-%m-%d %H:%M:%S')
             return naive_datetime.replace(tzinfo=ZoneInfo(DEFAULT_AREA))
         return v
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
 class ChatEvent(BaseEvent):
@@ -59,25 +59,20 @@ class ExperienceEvent(BaseEvent):
     duration: Optional[int] = None
     end_time: Optional[DateTime] = None
     
-    @root_validator(pre=False, skip_on_failure=True)
-    def check_duration_and_end_time(cls, values):
-        create_time = values.get('create_time')
-        duration = values.get('duration')
-        end_time = values.get('end_time')
-        
-        if duration is not None and end_time is not None:
-            calculated_duration = (end_time - create_time).total_seconds() // 60
-            if calculated_duration != duration:
+    @model_validator(mode='after')
+    def check_duration_and_end_time(self):
+        if self.duration is not None and self.end_time is not None:
+            calculated_duration = (self.end_time - self.create_time).total_seconds() // 60
+            if calculated_duration != self.duration:
                 raise ValueError('end_time does not match the duration from create_time')
-        elif duration is not None:
-            values['end_time'] = create_time + timedelta(minutes=duration)
-        elif end_time is not None:
-            duration_seconds = (end_time - create_time).total_seconds()
+        elif self.duration is not None:
+            self.end_time = self.create_time + timedelta(minutes=self.duration)
+        elif self.end_time is not None:
+            duration_seconds = (self.end_time - self.create_time).total_seconds()
             if duration_seconds < 0:
                 raise ValueError('end_time is before create_time')
-            values['duration'] = duration_seconds//60
-        
-        return values
+            self.duration = duration_seconds // 60
+        return self
 
 
 Events = Annotated[
@@ -89,7 +84,9 @@ Events = Annotated[
 class EventStream(BaseModel):
     """ EventStream now uses a dictionary with UUID keys. """
 
-    log: Dict[UUID1, Events] = {}
+    log: Dict[UUID1, Events] = Field(default_factory=dict)
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     def add_event(self, events: Union[Events, List[Events]]):
         """ Adds one or multiple events to the log. """
@@ -193,6 +190,3 @@ class EventStream(BaseModel):
     def to_json(self, file: str = 'all_events.json', directory: Path = EVENT_STREAM_DB_DIR) -> None:
         with open(directory / file, "w") as f:
             f.write(self.model_dump_json(indent=4))
-
-    class Config:
-        arbitrary_types_allowed = True

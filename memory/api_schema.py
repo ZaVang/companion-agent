@@ -13,7 +13,7 @@ LongMemEval 五大核心能力:
 
 from typing import Dict, List, Literal, Optional, Any, Union
 from datetime import datetime
-from pydantic import BaseModel, Field, UUID1
+from pydantic import BaseModel, Field, UUID1, ConfigDict
 from enum import Enum
 
 

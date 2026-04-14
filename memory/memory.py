@@ -1,5 +1,5 @@
 from typing import List, Dict, Optional, Set, Union, TYPE_CHECKING
-from pydantic import BaseModel, Field, UUID1
+from pydantic import BaseModel, Field, UUID1, ConfigDict
 from pathlib import Path
 from datetime import datetime
 import numpy as np
@@ -322,5 +322,4 @@ class EpisodicMemory(BaseModel):
         else:
             raise ValueError("Engram with the given UUID does not exist.")
 
-    class Config:
-        extra = "allow"
+    model_config = ConfigDict(extra="allow")
