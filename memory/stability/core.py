@@ -187,3 +187,51 @@ def suggest_neurons_for_reinforcement(
         suggestions.append((neuron_id, min(boost, 2.0)))
     
     return suggestions
+
+# ============== 管理器类 ==============
+
+class StabilityManager:
+    """
+    稳定性管理器
+    
+    管理多个 Engram 的稳定性状态，提供批量操作接口。
+    """
+    
+    def __init__(self, config: Optional[StabilityConfig] = None):
+        self.config = config or StabilityConfig()
+        self._engram_stabilities: Dict[str, float] = {}
+    
+    def register_engram(self, engram: 'Engram') -> float:
+        """注册 Engram 并返回其稳定性"""
+        stability, _ = calculate_engram_stability(engram, config=self.config)
+        self._engram_stabilities[str(engram.uuid)] = stability
+        return stability
+    
+    def get_stability(self, engram_id: str) -> Optional[float]:
+        """获取已注册 Engram 的稳定性"""
+        return self._engram_stabilities.get(engram_id)
+    
+    def update_stability(self, engram: 'Engram') -> float:
+        """更新 Engram 的稳定性"""
+        return self.register_engram(engram)
+    
+    def batch_check_activation(
+        self, 
+        engrams: List['Engram'],
+        threshold: float = DEFAULT_ACTIVATION_THRESHOLD
+    ) -> List[ActivationResult]:
+        """批量检查激活阈值"""
+        results = []
+        for engram in engrams:
+            result = check_activation_threshold(engram, threshold, self.config)
+            results.append(result)
+        return results
+    
+    def get_activatable_engrams(
+        self,
+        engrams: List['Engram'],
+        threshold: float = DEFAULT_ACTIVATION_THRESHOLD
+    ) -> List['Engram']:
+        """获取可激活的 Engram 列表"""
+        results = self.batch_check_activation(engrams, threshold)
+        return [e for e, r in zip(engrams, results) if r.is_activated]

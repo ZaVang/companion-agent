@@ -15,6 +15,7 @@ from memory.stability.core import (
     calculate_engram_stability,
     check_activation_threshold,
     suggest_neurons_for_reinforcement,
+    StabilityManager,
 )
 
 # 为了向后兼容，导出 schema 中的内容
@@ -35,6 +36,7 @@ __all__ = [
     'calculate_engram_stability',
     'check_activation_threshold',
     'suggest_neurons_for_reinforcement',
+    'StabilityManager',
     
     # 配置和模型
     'StabilityConfig',
