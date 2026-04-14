@@ -609,8 +609,7 @@ class MemorySystem:
         """
         使用索引加速的批量检索。
 
-        优先使用 search_by_text（无需 embedding），其次尝试向量搜索，
-        最后降级到 UnifiedRetriever。
+        优先使用 search_by_text（无需 embedding，可靠快速）。
 
         Args:
             query: 查询文本
@@ -645,44 +644,19 @@ class MemorySystem:
                             })
                     return retrieved
 
-            # 路径2: 向量搜索（需要 embedding）
-            try:
-                query_embedding = self.embedding_manager.embed(query)
-
-                if self.index:
-                    results = self.index.search(
-                        query=query_embedding,
-                        tags=event_types,
-                        top_k=top_k * 2
-                    )
-                    retrieved = []
-                    for neuron_id, score in results:
-                        if neuron_id in neuron_map:
-                            retrieved.append({
-                                'neuron_id': neuron_id,
-                                'score': score,
-                                'neuron': neuron_map[neuron_id]
-                            })
-                    return retrieved[:top_k]
-                else:
-                    from memory.unified_retriever import UnifiedRetriever, RetrievalConfig
-                    retriever = UnifiedRetriever(
-                        RetrievalConfig(),
-                        self.elo,
-                        self.decay,
-                        self.scene
-                    )
-                    results = retriever.retrieve(
-                        neurons=candidates,
-                        query_embedding=query_embedding,
-                        embedding_manager=self.embedding_manager,
-                        event_stream=self.event_stream,
-                        current_scene=None
-                    )
-                    return [{'neuron_id': str(r.event_id), 'score': r.final_score} for r in results[:top_k]]
-            except Exception:
-                # embedding 失败，降级到空
-                return []
+            # 路径2: 回退到简单内存扫描（不依赖 embedding）
+            # 基于 event_type 关键词匹配
+            query_lower = query.lower()
+            results = []
+            for neuron_id, neuron in neuron_map.items():
+                event_type_lower = neuron.event_type.lower()
+                if query_lower in event_type_lower:
+                    results.append({
+                        'neuron_id': neuron_id,
+                        'score': 0.5,
+                        'neuron': neuron
+                    })
+            return results[:top_k]
 
         except Exception:
             return []
