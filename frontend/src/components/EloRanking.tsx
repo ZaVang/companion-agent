@@ -1,5 +1,5 @@
 import React from 'react';
-import type { EloRankingItem, EVENT_TYPE_COLORS } from '../types/memory';
+import type { EloRankingItem } from '../types/memory';
 
 const COLORS: Record<string, string> = {
   chat: '#60A5FA',

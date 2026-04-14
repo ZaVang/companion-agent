@@ -1,5 +1,5 @@
 import React from 'react';
-import type { NeuronNode, EVENT_TYPE_LABELS, EVENT_TYPE_COLORS } from '../types/memory';
+import type { NeuronNode } from '../types/memory';
 
 const COLORS: Record<string, string> = {
   chat: '#60A5FA',

@@ -2,10 +2,10 @@ import React, { useState, useCallback } from 'react';
 import type { AddMemoryRequest, RetrieveRequest, SystemConfig, EventType } from '../types/memory';
 
 interface ControlPanelProps {
-  onAddMemory: (req: AddMemoryRequest) => Promise<void>;
-  onRetrieve: (req: RetrieveRequest) => Promise<void>;
-  onTriggerDMN: () => Promise<void>;
-  onTriggerElo: () => Promise<void>;
+  onAddMemory: (req: AddMemoryRequest) => Promise<unknown>;
+  onRetrieve: (req: RetrieveRequest) => Promise<unknown>;
+  onTriggerDMN: () => Promise<unknown>;
+  onTriggerElo: () => Promise<unknown>;
   onUpdateConfig: (config: Partial<SystemConfig>) => void;
   config: SystemConfig;
   isLoading: boolean;

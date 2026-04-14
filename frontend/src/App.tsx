@@ -1,7 +1,6 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { useMemorySystem } from './hooks/useMemorySystem';
 import MemoryNetworkGraph from './components/MemoryNetwork';
-import EngramCard from './components/EngramCard';
 import EloRanking from './components/EloRanking';
 import Timeline from './components/Timeline';
 import DecayChart from './components/DecayChart';

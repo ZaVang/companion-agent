@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import * as d3 from 'd3';
-import type { MemoryNetwork, GraphNode, GraphLink, EVENT_TYPE_COLORS } from '../types/memory';
+import type { MemoryNetwork, GraphNode, GraphLink } from '../types/memory';
 
 const COLORS: Record<string, string> = {
   chat: '#60A5FA',

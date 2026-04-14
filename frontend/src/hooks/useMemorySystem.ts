@@ -44,7 +44,7 @@ export function useMemorySystem(): UseMemorySystemReturn {
   const [network, setNetwork] = useState<MemoryNetwork>({ nodes: [], links: [] });
   const [stats, setStats] = useState<NetworkStats | null>(null);
   const [eloRanking, setEloRanking] = useState<EloRankingItem[]>([]);
-  const [decayHistory, setDecayHistory] = useState<DecayHistoryItem[]>([]);
+  const [decayHistory] = useState<DecayHistoryItem[]>([]);
   const [config, setConfig] = useState<SystemConfig>({
     decay_rate: 0.995,
     activation_threshold: 0.3,
@@ -311,7 +311,7 @@ export function useMemorySystem(): UseMemorySystemReturn {
     const ranking = [...network.nodes]
       .sort((a, b) => b.elo - a.elo)
       .slice(0, 10)
-      .map((node, index) => ({
+      .map((node) => ({
         id: node.id,
         label: node.label,
         type: node.type,
