@@ -13,6 +13,15 @@ Engram 记忆系统
 - stability: 记忆稳定性 (Sprint 2)
 - schemas: 配置和数据模型
 - api_schema: LongMemEval 兼容接口
+- dmn: 记忆巩固 (Sprint 5)
+- causal: 因果推理 (Sprint 6)
+- scene: 场景感知 (Sprint 5)
+- resonance: 共振引擎 (Sprint 6)
+- emotion: 情绪处理 (Sprint 7)
+- dynamics: 神经元动态增删 (Sprint 8)
+- viz: 可视化与调试 (Sprint 9)
+- optimization: 性能优化 (Sprint 10)
+- system: 统一入口 (Sprint 8-10)
 """
 
 # Schema 模块（配置和数据模型）
@@ -83,6 +92,72 @@ from memory.stability import (
     suggest_neurons_for_reinforcement,
 )
 
+# Sprint 5: DMN 和 Scene
+from memory.dmn import DMNMode, DMNConfig
+from memory.scene import SceneAwareRetrieval, SceneContext
+
+# Sprint 6: Causal 和 Resonance
+from memory.causal import CausalInference, CausalConfig
+from memory.resonance import ResonanceEngine, ResonanceConfig
+
+# Sprint 7: Emotion
+from memory.emotion import EmotionalImpact, ImpactMapper
+
+# Sprint 8: Dynamics
+from memory.dynamics import (
+    NeuronDynamics,
+    NeuronDeath,
+    NeuronBirth,
+    DeathCriteria,
+    BirthCriteria,
+    NeuronDeathManager,
+    NeuronBirthManager,
+    DeathReason,
+    BirthReason,
+    DeathRecord,
+    BirthRecord,
+)
+
+# Sprint 9: Visualization
+from memory.viz import (
+    NetworkVisualizer,
+    NetworkStats,
+    visualize_engram_network,
+    get_network_statistics,
+    MemoryHistory,
+    MemoryTracer,
+    HistoryEntry,
+    ChangeType,
+    track_memory_change,
+)
+
+# Sprint 10: Optimization
+from memory.optimization import (
+    MemoryIndex,
+    VectorIndex,
+    TimeIndex,
+    TagIndex,
+    IndexConfig,
+    get_memory_index,
+    BatchProcessor,
+    BatchConfig,
+    BatchResult,
+    batch_activate,
+    batch_decay,
+    batch_retrieve,
+)
+
+# System (Sprint 8-10)
+from memory.system import (
+    MemorySystem,
+    MemorySystemConfig,
+    DMNResult,
+    PredictionResult,
+    get_memory_system,
+    reset_memory_system,
+)
+
+
 __all__ = [
     # Schema
     'EloConfig', 'DecayConfig', 'ReflectionConfig', 'StabilityConfig',
@@ -118,4 +193,38 @@ __all__ = [
     'aggregate_strengths', 'calculate_neuron_stability',
     'calculate_engram_stability', 'check_activation_threshold',
     'suggest_neurons_for_reinforcement',
+    
+    # DMN & Scene (Sprint 5)
+    'DMNMode', 'DMNConfig',
+    'SceneAwareRetrieval', 'SceneContext',
+    
+    # Causal & Resonance (Sprint 6)
+    'CausalInference', 'CausalConfig',
+    'ResonanceEngine', 'ResonanceConfig',
+    
+    # Emotion (Sprint 7)
+    'EmotionalImpact', 'ImpactMapper',
+    
+    # Dynamics (Sprint 8)
+    'NeuronDynamics', 'NeuronDeath', 'NeuronBirth',
+    'DeathCriteria', 'BirthCriteria',
+    'NeuronDeathManager', 'NeuronBirthManager',
+    'DeathReason', 'BirthReason', 'DeathRecord', 'BirthRecord',
+    
+    # Visualization (Sprint 9)
+    'NetworkVisualizer', 'NetworkStats',
+    'visualize_engram_network', 'get_network_statistics',
+    'MemoryHistory', 'MemoryTracer', 'HistoryEntry',
+    'ChangeType', 'track_memory_change',
+    
+    # Optimization (Sprint 10)
+    'MemoryIndex', 'VectorIndex', 'TimeIndex', 'TagIndex',
+    'IndexConfig', 'get_memory_index',
+    'BatchProcessor', 'BatchConfig', 'BatchResult',
+    'batch_activate', 'batch_decay', 'batch_retrieve',
+    
+    # System
+    'MemorySystem', 'MemorySystemConfig',
+    'DMNResult', 'PredictionResult',
+    'get_memory_system', 'reset_memory_system',
 ]

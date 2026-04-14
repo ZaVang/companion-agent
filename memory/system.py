@@ -1,0 +1,517 @@
+"""
+MemorySystem 统一入口
+
+整合所有 Sprint 功能的统一记忆系统。
+"""
+
+from typing import Dict, List, Optional, Set, Tuple, Any, Literal
+from pydantic import BaseModel, Field, UUID1
+from datetime import datetime
+from dataclasses import dataclass, field
+import uuid
+
+from memory.utils import now as utc_now
+
+# 导入现有模块
+from memory.elo import EloCompetition, EloConfig
+from memory.decay import DecayScheduler, DecayConfig, BASE_DECAY_RATES, calculate_emotion_aware_decay
+from memory.stability import (
+    StabilityManager,
+    StabilityConfig,
+    calculate_neuron_stability,
+    calculate_engram_stability,
+)
+from memory.dmn import DMNMode, DMNConfig
+from memory.causal import CausalInference, CausalConfig
+from memory.scene import SceneAwareRetrieval, SceneContext
+from memory.resonance import ResonanceEngine, ResonanceConfig
+from memory.emotion import EmotionalImpact
+
+# Sprint 8: 神经元动态
+from memory.dynamics import (
+    NeuronDynamics,
+    NeuronDeathManager,
+    NeuronBirthManager,
+    DeathCriteria,
+    BirthCriteria,
+    DeathReason,
+    BirthReason,
+)
+
+# Sprint 9: 可视化
+from memory.viz import MemoryHistory, MemoryTracer, NetworkVisualizer
+
+# Sprint 10: 优化
+from memory.optimization import MemoryIndex, BatchProcessor, BatchConfig
+
+# 核心类
+from memory.neuron import NeuronCell
+from memory.engram import Engram
+
+
+# ============== 配置类 ==============
+
+class MemorySystemConfig(BaseModel):
+    """MemorySystem 配置"""
+    # Elo 配置
+    elo_config: EloConfig = Field(default_factory=EloConfig)
+    
+    # Decay 配置
+    decay_config: DecayConfig = Field(default_factory=DecayConfig)
+    
+    # Stability 配置
+    stability_config: StabilityConfig = Field(default_factory=StabilityConfig)
+    
+    # DMN 配置
+    dmn_config: DMNConfig = Field(default_factory=DMNConfig)
+    
+    # Causal 配置
+    causal_config: CausalConfig = Field(default_factory=CausalConfig)
+    
+    # Scene 配置
+    enable_scene: bool = True
+    
+    # Resonance 配置
+    resonance_config: ResonanceConfig = Field(default_factory=ResonanceConfig)
+    
+    # Dynamics 配置
+    death_criteria: DeathCriteria = Field(default_factory=DeathCriteria)
+    birth_criteria: BirthCriteria = Field(default_factory=BirthCriteria)
+    
+    # Optimization 配置
+    batch_config: BatchConfig = Field(default_factory=BatchConfig)
+    enable_index: bool = True
+    
+    # 行为配置
+    auto_decay: bool = True          # 自动衰减
+    auto_consolidation: bool = True  # 自动固化
+    auto_dynamics: bool = True       # 自动动态管理
+
+
+class DMNResult(BaseModel):
+    """DMN 运行结果"""
+    success: bool
+    consolidations: int = 0
+    prunings: int = 0
+    new_associations: int = 0
+    messages: List[str] = Field(default_factory=list)
+
+
+@dataclass
+class PredictionResult:
+    """预测激活结果"""
+    neuron_id: str
+    predicted_strength: float
+    confidence: float
+    related_neurons: List[str] = field(default_factory=list)
+
+
+# ============== 主类 ==============
+
+class MemorySystem:
+    """
+    统一记忆系统入口
+    
+    整合所有 Sprint 功能，提供统一接口。
+    """
+    
+    def __init__(self, config: Optional[MemorySystemConfig] = None):
+        self.config = config or MemorySystemConfig()
+        
+        # 核心模块（Sprint 1-7）
+        self.elo = EloCompetition(self.config.elo_config)
+        self.decay = DecayScheduler(self.config.decay_config)
+        self.stability = StabilityManager(self.config.stability_config)
+        self.dmn = DMNMode(self.config.dmn_config)
+        self.causal = CausalInference(self.config.causal_config)
+        self.scene = SceneAwareRetrieval() if self.config.enable_scene else None
+        self.resonance = ResonanceEngine(self.config.resonance_config)
+        
+        # Sprint 8: 动态管理
+        self.dynamics = NeuronDynamics(
+            death_criteria=self.config.death_criteria,
+            birth_criteria=self.config.birth_criteria
+        )
+        
+        # Sprint 9: 可视化与追踪
+        self.history = MemoryHistory()
+        self.tracer = MemoryTracer(self.history)
+        
+        # Sprint 10: 优化
+        self.index = MemoryIndex() if self.config.enable_index else None
+        self.batch = BatchProcessor(self.config.batch_config)
+        
+        # 内部状态
+        self._neurons: Dict[str, NeuronCell] = {}
+        self._engrams: Dict[str, Engram] = {}
+        self._initialized = True
+    
+    # ============== 核心操作 ==============
+    
+    def add_memory(
+        self,
+        content: str,
+        event_type: str = 'chat',
+        emotion: Optional[EmotionalImpact] = None,
+        scene: Optional[SceneContext] = None,
+        actor: str = 'system',
+        audience: List[str] = None,
+        metadata: Dict = None
+    ) -> NeuronCell:
+        """
+        添加记忆
+        
+        Args:
+            content: 记忆内容
+            event_type: 事件类型
+            emotion: 情绪影响
+            scene: 场景上下文
+            actor: 行动者
+            audience: 受众
+            metadata: 额外元数据
+        
+        Returns:
+            创建的 NeuronCell
+        """
+        if audience is None:
+            audience = []
+        if metadata is None:
+            metadata = {}
+        
+        # 创建神经元
+        neuron = NeuronCell(
+            event_type=event_type,
+            create_time=utc_now(),
+            actor=actor,
+            audience=audience
+        )
+        
+        # 设置情绪
+        if emotion:
+            neuron.emotional_valence = emotion.valence
+            neuron.emotional_arousal = emotion.arousal
+            neuron.emotional_dominance = emotion.dominance
+            
+            # 计算冲击力
+            impact_score = emotion.to_impact_score()
+            neuron.impact_score = impact_score
+        
+        # 计算衰减率
+        if emotion:
+            neuron.decay_rate = calculate_emotion_aware_decay(
+                event_type=event_type,
+                emotional_valence=emotion.valence,
+                emotional_arousal=emotion.arousal,
+                emotional_dominance=emotion.dominance
+            )
+        else:
+            neuron.decay_rate = BASE_DECAY_RATES.get(event_type, 0.995)
+        
+        # 注册到 Elo 系统
+        self.elo.register_neuron(neuron.event_id)
+        
+        # 更新索引
+        if self.index:
+            self.index.add_neuron(
+                neuron_id=str(neuron.event_id),
+                timestamp=neuron.create_time,
+                tags={event_type},
+                strength=neuron.strength,
+                event_type=event_type
+            )
+        
+        # 更新场景
+        if self.scene and scene:
+            self.scene.map_neuron_to_scene(str(neuron.event_id), scene)
+        
+        # 追踪历史
+        self.tracer.history.add_entry(
+            neuron_id=str(neuron.event_id),
+            change_type='created',
+            event_type=event_type,
+            emotion={
+                'valence': emotion.valence if emotion else 0,
+                'arousal': emotion.arousal if emotion else 0.5,
+                'dominance': emotion.dominance if emotion else 0.5
+            },
+            **metadata
+        )
+        
+        # 存储神经元
+        self._neurons[str(neuron.event_id)] = neuron
+        
+        return neuron
+    
+    def retrieve(
+        self,
+        query: str,
+        scene: Optional[SceneContext] = None,
+        top_k: int = 10,
+        event_types: List[str] = None
+    ) -> List[NeuronCell]:
+        """
+        检索记忆
+        
+        Args:
+            query: 查询文本
+            scene: 场景上下文（可选）
+            top_k: 返回数量
+            event_types: 事件类型过滤
+        
+        Returns:
+            匹配的 NeuronCell 列表
+        """
+        if not self._neurons:
+            return []
+        
+        candidates = list(self._neurons.values())
+        
+        # 按事件类型过滤
+        if event_types:
+            candidates = [n for n in candidates if n.event_type in event_types]
+        
+        # 场景过滤
+        if self.scene and scene:
+            scene_neurons = self.scene.get_neurons_for_scene(scene)
+            neuron_ids = {str(n.event_id) for n in candidates}
+            common = neuron_ids & scene_neurons
+            candidates = [n for n in candidates if str(n.event_id) in common]
+        
+        # 简单评分（实际应使用 embedding）
+        scores = []
+        query_words = set(query.lower().split())
+        for neuron in candidates:
+            # 获取关联事件内容作为评分依据
+            neuron_words = set()
+            # 简化：使用 event_type 作为特征
+            neuron_words.add(neuron.event_type)
+            
+            overlap = len(query_words & neuron_words)
+            score = overlap / max(len(query_words), 1) if query_words else 0
+            
+            # 考虑强度
+            score *= neuron.strength
+            
+            scores.append((neuron, score))
+        
+        # 排序
+        scores.sort(key=lambda x: x[1], reverse=True)
+        return [n for n, _ in scores[:top_k]]
+    
+    def apply_decay(self, reference_time: datetime = None) -> int:
+        """
+        应用衰减
+        
+        Args:
+            reference_time: 参考时间
+        
+        Returns:
+            衰减的神经元数量
+        """
+        if reference_time is None:
+            reference_time = utc_now()
+        
+        decayed_count = 0
+        for neuron_id, neuron in list(self._neurons.items()):
+            old_strength = neuron.strength
+            neuron.apply_decay(reference_time)
+            
+            if neuron.strength < old_strength:
+                decayed_count += 1
+                
+                # 追踪
+                self.tracer.trace_decay(
+                    neuron_id=neuron_id,
+                    old_strength=old_strength,
+                    new_strength=neuron.strength,
+                    decay_rate=neuron.decay_rate
+                )
+        
+        return decayed_count
+    
+    def run_dmn(self) -> DMNResult:
+        """
+        运行 DMN
+        
+        Returns:
+            DMNResult
+        """
+        # 简化实现
+        result = DMNResult(success=True)
+        
+        # 评估需要固化的记忆
+        if self.config.auto_consolidation:
+            consolidation_threshold = 0.7  # 默认阈值
+            for neuron_id, neuron in self._neurons.items():
+                stability = calculate_neuron_stability(neuron)
+                if stability > consolidation_threshold:
+                    result.consolidations += 1
+        
+        # 评估需要清理的记忆
+        if self.config.auto_dynamics:
+            neurons_to_check = [
+                {
+                    'id': neuron_id,
+                    'elo': self.elo.get_neuron_state(neuron_id).elo if hasattr(self.elo, 'get_neuron_state') else 1000,
+                    'strength': neuron.strength,
+                    'last_activation': None,
+                    'connections_count': len(neuron.outgoing_connections)
+                }
+                for neuron_id, neuron in self._neurons.items()
+            ]
+            
+            death_results = self.dynamics.death_manager.batch_evaluate(neurons_to_check)
+            for neuron_id, should_die, reason, record in death_results:
+                if should_die:
+                    result.prunings += 1
+                    self._neurons.pop(neuron_id, None)
+                    if self.index:
+                        self.index.remove_neuron(neuron_id)
+        
+        return result
+    
+    def predict_activation(self, cue: str) -> List[PredictionResult]:
+        """
+        预测激活
+        
+        使用共振机制预测给定线索会激活哪些记忆。
+        
+        Args:
+            cue: 激活线索
+        
+        Returns:
+            预测结果列表
+        """
+        # 检索相关记忆
+        candidates = self.retrieve(cue, top_k=20)
+        
+        results = []
+        for neuron in candidates:
+            # 计算激活能量
+            energy = self.resonance.calculate_activation_energy(
+                strength=neuron.strength,
+                elo=1000.0,  # 默认值
+                connections_count=len(neuron.outgoing_connections)
+            )
+            
+            # 使用能量作为共振分数
+            resonance_score = min(1.0, energy)
+            
+            # 预测激活后的强度
+            predicted_strength = neuron.strength * (1 + resonance_score)
+            
+            results.append(PredictionResult(
+                neuron_id=str(neuron.event_id),
+                predicted_strength=predicted_strength,
+                confidence=resonance_score,
+                related_neurons=[str(c.target_id) for c in neuron.outgoing_connections]
+            ))
+        
+        # 按置信度排序
+        results.sort(key=lambda x: x.confidence, reverse=True)
+        return results
+    
+    # ============== 动态管理 ==============
+    
+    def run_dynamics_cycle(self) -> Dict:
+        """
+        运行动态管理周期
+        
+        Returns:
+            统计信息
+        """
+        stats = {
+            'births': 0,
+            'deaths': 0,
+            'splits': 0,
+            'abstractions': 0
+        }
+        
+        # 评估死亡
+        neurons_data = [
+            {
+                'id': neuron_id,
+                'elo': self.elo.get_neuron_state(neuron_id).elo if hasattr(self.elo, 'get_neuron_state') else 1000,
+                'strength': neuron.strength,
+                'last_activation': None,
+                'connections_count': len(neuron.outgoing_connections)
+            }
+            for neuron_id, neuron in self._neurons.items()
+        ]
+        
+        death_results = self.dynamics.death_manager.batch_evaluate(neurons_data)
+        for neuron_id, should_die, reason, record in death_results:
+            if should_die:
+                stats['deaths'] += 1
+                self._neurons.pop(neuron_id, None)
+                if self.index:
+                    self.index.remove_neuron(neuron_id)
+        
+        # 评估新生
+        for neuron_id, neuron in list(self._neurons.items()):
+            birth_record = self.dynamics.birth_manager.execute_birth(
+                neuron_id=neuron_id,
+                strength=neuron.strength,
+                content=""
+            )
+            if birth_record:
+                stats['births'] += 1
+        
+        return stats
+    
+    # ============== 统计和调试 ==============
+    
+    def get_statistics(self) -> Dict:
+        """获取系统统计"""
+        total_neurons = len(self._neurons)
+        
+        neurons_by_type: Dict[str, int] = {}
+        total_strength = 0.0
+        for neuron in self._neurons.values():
+            neurons_by_type[neuron.event_type] = neurons_by_type.get(neuron.event_type, 0) + 1
+            total_strength += neuron.strength
+        
+        return {
+            'total_neurons': total_neurons,
+            'neurons_by_type': neurons_by_type,
+            'avg_strength': total_strength / total_neurons if total_neurons > 0 else 0,
+            'elo_statistics': self.elo.get_statistics() if hasattr(self.elo, 'get_statistics') else {},
+            'dynamics': {
+                'total_deaths': self.dynamics.death_manager.get_statistics()['total_deaths'],
+                'total_births': self.dynamics.birth_manager.get_statistics()['total_births']
+            },
+            'history': self.history.get_statistics(),
+            'index': self.index.get_statistics() if self.index else None
+        }
+    
+    def get_network_visualization(self) -> str:
+        """获取网络可视化"""
+        viz = NetworkVisualizer()
+        
+        neurons = list(self._neurons.values())
+        connections = []
+        
+        for neuron in neurons:
+            for conn in neuron.outgoing_connections:
+                connections.append((str(neuron.event_id), str(conn.target_id)))
+        
+        viz.build_from_neurons(neurons, connections)
+        return viz.render_text()
+
+
+# 全局实例
+_global_memory_system: Optional[MemorySystem] = None
+
+
+def get_memory_system() -> MemorySystem:
+    """获取全局 MemorySystem"""
+    global _global_memory_system
+    if _global_memory_system is None:
+        _global_memory_system = MemorySystem()
+    return _global_memory_system
+
+
+def reset_memory_system() -> None:
+    """重置全局 MemorySystem"""
+    global _global_memory_system
+    _global_memory_system = None

@@ -30,6 +30,22 @@ from utils.common import (
 )
 from utils.path import EMBEDDING_DB_DIR, ENGRAM_DB_DIR
 
+# Sprint 8-10: 导入 MemorySystem
+try:
+    from memory.system import (
+        MemorySystem,
+        MemorySystemConfig,
+        DMNResult,
+        PredictionResult,
+    )
+    HAS_MEMORY_SYSTEM = True
+except ImportError:
+    HAS_MEMORY_SYSTEM = False
+    MemorySystem = None
+    MemorySystemConfig = None
+    DMNResult = None
+    PredictionResult = None
+
 
 class BaseBrain(BaseModel):
     short_term_memory: ShortTermMemory
@@ -38,8 +54,157 @@ class BaseBrain(BaseModel):
     event_stream: EventStream
     embedding_manager: EmbeddingManager
     
+    # Sprint 8-10: MemorySystem 集成（可选）
+    memory_system: Optional[Any] = Field(default=None, exclude=True)
+    _use_new_memory_system: bool = Field(default=False, exclude=True)
+    
     class Config:
         arbitrary_types_allowed=True
+    
+    def initialize_memory_system(self, config: MemorySystemConfig = None) -> bool:
+        """
+        初始化 MemorySystem（可选功能）
+        
+        Args:
+            config: MemorySystem 配置
+        
+        Returns:
+            是否成功初始化
+        """
+        if not HAS_MEMORY_SYSTEM:
+            return False
+        
+        try:
+            self.memory_system = MemorySystem(config)
+            self._use_new_memory_system = True
+            return True
+        except Exception:
+            return False
+    
+    def use_memory_system(self, use: bool = True) -> None:
+        """
+        设置是否使用新的 MemorySystem
+        
+        Args:
+            use: True 使用新系统，False 使用旧系统
+        """
+        if use and not self.memory_system:
+            self.initialize_memory_system()
+        self._use_new_memory_system = use and self.memory_system is not None
+    
+    def add_memory_with_system(
+        self,
+        content: str,
+        event_type: str = 'chat',
+        emotion: 'EmotionalImpact' = None,
+        scene: 'SceneContext' = None,
+        actor: str = None,
+        audience: List[str] = None
+    ) -> Optional['NeuronCell']:
+        """
+        使用 MemorySystem 添加记忆（新方式）
+        
+        如果 MemorySystem 未初始化或设置为不使用，则返回 None。
+        """
+        if not self._use_new_memory_system or not self.memory_system:
+            return None
+        
+        if actor is None:
+            actor = self.agent.persona.name
+        
+        return self.memory_system.add_memory(
+            content=content,
+            event_type=event_type,
+            emotion=emotion,
+            scene=scene,
+            actor=actor,
+            audience=audience
+        )
+    
+    def retrieve_with_system(
+        self,
+        query: str,
+        scene: 'SceneContext' = None,
+        top_k: int = 10
+    ) -> List['NeuronCell']:
+        """
+        使用 MemorySystem 检索记忆（新方式）
+        
+        如果 MemorySystem 未初始化或设置为不使用，则返回空列表。
+        """
+        if not self._use_new_memory_system or not self.memory_system:
+            return []
+        
+        return self.memory_system.retrieve(
+            query=query,
+            scene=scene,
+            top_k=top_k
+        )
+    
+    def predict_activation_with_system(self, cue: str) -> List[PredictionResult]:
+        """
+        使用 MemorySystem 预测激活
+        
+        Args:
+            cue: 激活线索
+        
+        Returns:
+            预测结果列表
+        """
+        if not self._use_new_memory_system or not self.memory_system:
+            return []
+        
+        return self.memory_system.predict_activation(cue)
+    
+    def run_dmn_with_system(self) -> Optional[DMNResult]:
+        """
+        使用 MemorySystem 运行 DMN
+        
+        Returns:
+            DMN 结果
+        """
+        if not self._use_new_memory_system or not self.memory_system:
+            return None
+        
+        return self.memory_system.run_dmn()
+    
+    def apply_decay_with_system(self) -> int:
+        """
+        使用 MemorySystem 应用衰减
+        
+        Returns:
+            衰减的神经元数量
+        """
+        if not self._use_new_memory_system or not self.memory_system:
+            return 0
+        
+        return self.memory_system.apply_decay()
+    
+    def get_memory_statistics(self) -> Dict:
+        """
+        获取记忆统计（支持新旧两种系统）
+        
+        Returns:
+            统计信息字典
+        """
+        stats = {
+            'using_new_system': self._use_new_memory_system,
+            'short_term_neurons': 0,
+            'long_term_engrams': 0,
+        }
+        
+        # 旧系统统计
+        for seq in self.short_term_memory.sequences.values():
+            stats['short_term_neurons'] += len(seq.engram['chat'])
+        
+        stats['long_term_engrams'] = len(self.episodic_memory.registry)
+        
+        # 新系统统计
+        if self._use_new_memory_system and self.memory_system:
+            new_stats = self.memory_system.get_statistics()
+            stats['memory_system'] = new_stats
+        
+        return stats
     
     async def chat(self,
                    query: str, 
