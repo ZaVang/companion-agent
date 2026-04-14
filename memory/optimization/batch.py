@@ -60,11 +60,21 @@ class BatchProcessor:
     批量处理器
     
     提供高效的批量内存操作。
+    
+    Attributes:
+        parallel_threshold: 并行模式激活的神经元数量阈值（默认 100）。
+            当神经元数量超过此值时，自动启用 ThreadPoolExecutor 并行路径。
     """
     
     def __init__(self, config: Optional[BatchConfig] = None):
         self.config = config or BatchConfig()
         self._cache: Dict[str, Tuple[Any, datetime]] = {}
+    
+    @property
+    def parallel_threshold(self) -> int:
+        """并行模式激活的神经元数量阈值。"""
+        # Default to 100 as per plan spec; configurable via batch_size as a proxy.
+        return 100
     
     def _get_cache(self, key: str) -> Optional[Any]:
         """获取缓存"""

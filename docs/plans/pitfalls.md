@@ -122,3 +122,22 @@
 
 ---
 
+
+---
+
+## Sprint 11 新增陷阱（2026-04-14）
+
+### [实现] EmbeddingManager 懒加载不能放在 __init__
+- **问题**: 在 `__init__` 中加载 `sentence-transformers` 模型会阻塞整个 MemorySystem 实例化
+- **正确做法**: 改为在首次 `embed()` 调用时才加载模型（lazy loading）
+- **原因**: 模型文件可能不存在或网络不可用，同步阻塞影响可用性
+
+### [实现] NeuronCell 没有 `id` 属性，只有 `event_id`
+- **问题**: 代码中有地方用 `neuron.id` 访问 NeuronCell，但该类只有 `event_id` 属性
+- **正确做法**: 添加 `id` property 别名指向 `event_id`，或统一使用 `event_id`
+- **原因**: 接口一致性，避免 AttributeError
+
+### [测试] 验收命令中 positional argument 顺序必须与函数签名匹配
+- **问题**: SPRINT.md 验收命令 `ms.add_memory('测试记忆', 'test-user')` 把第二个参数当作 event_type，但实际签名是 `(content, event_type, emotion, scene, actor, ...)`
+- **正确做法**: 使用 keyword argument 明确指定：`ms.add_memory('测试记忆', actor='test-user')`
+- **原因**: keyword argument 更健壮，函数签名变化时不易出错

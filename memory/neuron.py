@@ -73,6 +73,11 @@ class NeuronCell(BaseModel):
             return naive_datetime.replace(tzinfo=ZoneInfo(DEFAULT_AREA))
         return v
     
+    @property
+    def id(self) -> str:
+        """Alias for event_id (returns string representation)."""
+        return str(self.event_id)
+
     def __hash__(self):
         return hash(self.event_id)
 

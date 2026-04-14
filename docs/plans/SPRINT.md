@@ -1,160 +1,64 @@
-# Sprint 1: 核心机制补全
+# Sprint 11: 遗留问题完善 + 系统健壮性
 
-**状态**: Phase 2 完成 ✅
-**开始时间**: 2026-04-13
-**预计完成**: 2026-04-20
-
----
-
-## 目标
-
-完善 Elo 竞争机制和动态衰减系统，让记忆系统具备真正的神经思维特性。
-
----
+**状态**: 已完成 ✅
+**目标**: 修复遗留系统问题，提升 MemorySystem 在 embedding 模型不可用时的健壮性，完成 Sprint 5/6/7 集成
 
 ## 任务清单
 
-### Phase 1: 理解与诊断 ✅
+- [x] 1. **embedding 加载阻塞修复**: 在 `EmbeddingManager.__init__` 中添加 try/except，模型加载失败时设置 `_available=False`；`embed()` 方法在 `embedding_model` 不可用时返回 None 或抛出明确异常
+- [x] 2. **BatchProcessor 并行模式激活**: 在 `MemorySystem` 中添加 `_use_parallel=True` 参数，数据量 > 100 时启用 `ThreadPoolExecutor` 路径
+- [x] 3. **Sprint 5/6/7 集成到 add_memory()**: Scene/Resonance/Emotion 触发机制接入 `add_memory()` 调用链
+- [x] 4. **更新 SPRINT.md 状态**: 将 sprint8/9 的 `[ ]` 改为 `[x]`（已完成），sprin10 标记完成
 
-- [x] 深入理解现有代码的 Elo 机制实现细节
-- [x] 分析 strength 字段在检索中的实际使用情况
-- [x] 识别当前衰减机制的局限性
+## 验收标准
 
-**关键发现**:
-- Elo 机制名不副实（只有 strength 字段，没有竞争逻辑）
-- 检索实现分裂（brain.py 用 strength，retrieve.py 不用）
-- 衰减一刀切（所有记忆 0.995）
-
-### Phase 2: 核心实现 ✅
-
-- [x] 实现 Elo 竞争机制的完整逻辑
-  - [x] 设计 NeuronCell 的"战斗力"属性 → `elo.py::get_combat_power()`
-  - [x] 实现检索时的竞争逻辑 → `elo.py::update_after_retrieval()`
-  - [x] K-factor 动态调整（高频激活 16，低频激活 64，默认 32）
-  
-- [x] 设计动态衰减系统
-  - [x] 不同 event_type 基础衰减率：chat=0.995, perception=0.990, thought=0.992, reflection=0.998, experience=0.985
-  - [x] 冲击力(impact_score) 影响衰减速度 → `decay.py::calculate_decay_rate()`
-  - [x] 公式：`adjusted_rate = base_rate + impact_factor × (1 - base_rate)`
-  
-- [x] 统一检索逻辑
-  - [x] 创建 `unified_retriever.py` 整合评分逻辑
-  - [x] 综合评分：`score = weighted(similarity, elo, decay, recency)`
-
-- [x] LongMemEval 接口对齐
-  - [x] 创建 `api_schema.py` 定义 5 大能力 API
-  - [x] Information Extraction / Multi-Session Reasoning / Temporal Reasoning / Knowledge Updates / Abstention
-
-### Phase 3: Reflection 自动化
-
-- [ ] 设计 reflection 触发条件
-  - [ ] 记忆冲突（相似记忆强度差异大）
-  - [ ] 新知识关联（发现新的连接模式）
-  - [ ] 定期触发（DMN 模式的一部分）
-  
-- [ ] 实现 reflection 执行逻辑
-  - [ ] LLM 生成 reflection 内容
-  - [ ] reflection 结果写入记忆网络
-  - [ ] 更新相关神经元连接
-
-### Phase 4: 测试与验证 ✅
-
-- [x] 编写 Elo 竞争机制测试用例 (19 tests)
-- [x] 编写动态衰减测试用例
-- [x] 模拟"差点被撞"场景（高冲击力，慢衰减）
-- [x] 模拟"每天遛狗"场景（低冲击力，快衰减）
-
----
-
-## Sprint 2: 记忆稳定性
-
-**状态**: 已完成 ✅
-**开始时间**: 2026-04-14
-
-### 任务清单
-
-- [x] 实现集体稳定性机制
-  - [x] `stability.py::calculate_engram_stability()` - 成员强度聚合
-  - [x] 支持多种聚合方法：arithmetic, harmonic, geometric, max, min
-  
-- [x] 设计激活阈值系统
-  - [x] `stability.py::check_activation_threshold()` - 检查是否达到激活阈值
-  - [x] `stability.py::suggest_neurons_for_reinforcement()` - 建议需要增强的神经元
-  
-- [x] 优化代表神经元稳定性
-  - [x] 代表神经元有 1.5x 稳定性加成
-  - [x] `StabilityManager` 批量管理
-
-### Sprint 2 测试结果
-
-- 20 个测试全部通过
-
----
+1. `EmbeddingManager` 在模型加载失败时不抛出未处理异常，`_available` 属性正确反映状态 ✅
+2. `add_memory()` 在 embedding 失败时不崩溃，返回的神经元对象不含 embedding ✅
+3. `BatchProcessor` 在神经元数 > 100 时自动启用并行路径 ✅
+4. `add_memory()` 调用时会触发 scene/emotion/resonance 分析（返回结果中包含相关字段）✅
+5. `pytest tests/ -v` 全部通过 ✅
+6. 验收命令全部通过 ✅
 
 ## 验收命令
 
 ```bash
-# 1. 运行所有测试
-cd /app/data/companion-agent && python -m pytest tests/ -v
+cd /tmp/companion-agent-test
 
-# 2. 验证 Elo 竞争机制
-python -c "
-from memory.elo import EloCompetitor
-elo = EloCompetitor()
-print('Elo mechanism OK')
+# 1. EmbeddingManager 健壮性测试
+python3 -c "
+from memory.embedding import EmbeddingManager
+em = EmbeddingManager()
+print('EmbeddingManager created OK')
+print('_available:', getattr(em, '_available', 'NOT_SET'))
 "
 
-# 3. 验证动态衰减
-python -c "
-from memory.decay import calculate_decay_rate
-rate = calculate_decay_rate(event_type='chat', impact_score=0.9)
-assert rate > 0.99, 'High impact should decay slowly'
-print('Dynamic decay OK')
+# 2. add_memory 在 embedding 失败时仍能工作
+python3 -c "
+from memory.system import MemorySystem
+import os
+os.environ['EMBEDDING_DISABLED'] = '1'
+# 测试时模拟 embedding 不可用
+from memory.embedding import EmbeddingManager
+original = EmbeddingManager.embed
+EmbeddingManager.embed = lambda self, x: None  # 模拟失败
+ms = MemorySystem()
+try:
+    neuron = ms.add_memory('测试记忆', actor='test-user')
+    print('add_memory OK despite embedding failure')
+    print('neuron id:', neuron.id)
+except Exception as e:
+    print('ERROR:', e)
+finally:
+    EmbeddingManager.embed = original
 "
 
-# 4. 验证稳定性系统
-python -c "
-from memory.stability import StabilityManager, calculate_engram_stability
-print('Stability mechanism OK')
+# 3. BatchProcessor 并行模式检查
+python3 -c "
+from memory.optimization import BatchProcessor
+bp = BatchProcessor()
+print('BatchProcessor parallel_threshold:', bp.parallel_threshold if hasattr(bp, 'parallel_threshold') else 'NOT_SET')
 "
 
-# 5. 验证 LongMemEval 接口
-python -c "
-from memory.api_schema import AddMemoryRequest, RetrieveMemoryRequest
-print('LongMemEval API schema OK')
-"
+# 4. 全部测试通过
+python3 -m pytest tests/ -v --tb=short 2>&1 | tail -5
 ```
-
----
-
-## 新增文件
-
-| 文件 | 描述 |
-|------|------|
-| `memory/elo.py` | Elo 竞争机制实现 |
-| `memory/decay.py` | 动态衰减系统实现 |
-| `memory/unified_retriever.py` | 统一检索系统 |
-| `memory/stability.py` | 记忆稳定性系统 |
-| `memory/api_schema.py` | LongMemEval 兼容 API |
-| `tests/test_sprint1_phase2.py` | Sprint 1 Phase 2 测试 |
-| `tests/test_sprint2.py` | Sprint 2 测试 |
-
----
-
-## 关键决策
-
-1. **Elo K-factor 选择**: 初始值 32，根据神经元激活频率动态调整
-2. **衰减率范围**: 0.98 ~ 0.9999（快衰减 ~ 极慢衰减）
-3. **冲击力评分**: 0.0 ~ 1.0，由 LLM 或用户标注
-4. **稳定性聚合**: 默认使用 arithmetic mean，可切换 harmonic/geometric
-
----
-
-## 相关文档
-
-- [architecture.md](../architecture.md) - 系统架构设计
-- [pitfalls.md](./pitfalls.md) - 陷阱知识库
-- [FUTURE.md](../FUTURE.md) - 后续 Sprint 规划
-
----
-

@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Set, Union
+from typing import List, Dict, Set, Union, Optional
 from functools import lru_cache
 from pydantic import BaseModel, UUID1, Field, ConfigDict
 import numpy as np
@@ -14,13 +14,50 @@ from utils.model import get_embedding_model, BGEModel, Word2VecModel
 from utils.common import EMBEDDING_CACHE_SIZE
 
 class EmbeddingManager(BaseModel):
-    """ EmbeddingManager now use a dictionary with UUID keys."""
-    embedding_model: Union[SentenceModel, BGEModel, Word2VecModel] = Field(default_factory=get_embedding_model)
-    registry: Set[UUID1] = Field(default_factory=set)
+    """ EmbeddingManager now use a dictionary with UUID keys.
 
-    def embed(self, query: str) -> np.ndarray:
-        return self.embedding_model.encode(query)
-    
+    Robustness: if model loading fails (e.g. missing model files),
+    _available is set to False and embed() returns None instead of crashing.
+    """
+    embedding_model: Union[SentenceModel, BGEModel, Word2VecModel, None] = None
+    registry: Set[UUID1] = Field(default_factory=set)
+    _available: bool = True
+
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Do NOT load the model here - lazy load only when embed() is first called.
+        # This keeps __init__ fast and avoids blocking on model download.
+
+    def _try_load_model(self) -> None:
+        """Attempt to load the embedding model. Sets _available on success/failure."""
+        if self._available and self.embedding_model is not None:
+            # Already loaded successfully.
+            return
+        try:
+            self.embedding_model = get_embedding_model()
+            self._available = True
+        except Exception:
+            self.embedding_model = None
+            self._available = False
+
+    def embed(self, query: str) -> Optional[np.ndarray]:
+        """Encode a query string into an embedding vector.
+
+        Returns None if the embedding model is not available (loading failed
+        or was explicitly disabled).
+        """
+        # Lazy-load on first embed call.
+        if not self._available or self.embedding_model is None:
+            self._try_load_model()
+        if not self._available or self.embedding_model is None:
+            return None
+        try:
+            return self.embedding_model.encode(query)
+        except Exception:
+            # Degrade gracefully: model may become unavailable mid-session.
+            self._available = False
+            return None
+
     def add_embeddings(self, embeddings: Dict[UUID1, np.ndarray]) -> None:
         """ Adds embeddings to the log. """
         for uuid, embedding in embeddings.items():

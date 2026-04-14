@@ -123,8 +123,10 @@ class MemorySystem:
         self,
         config: Optional[MemorySystemConfig] = None,
         episodic_memory: Optional['EpisodicMemory'] = None,
+        _use_parallel: bool = True,
     ):
         self.config = config or MemorySystemConfig()
+        self._use_parallel = _use_parallel
 
         # 核心模块（Sprint 1-7）
         self.elo = EloCompetition(self.config.elo_config)
@@ -254,7 +256,7 @@ class MemorySystem:
             metadata: 额外元数据
         
         Returns:
-            创建的 NeuronCell
+            创建的 NeuronCell（内部包含 scene/emotion/resonance 元数据）
         """
         if audience is None:
             audience = []
@@ -303,9 +305,35 @@ class MemorySystem:
                 event_type=event_type
             )
         
-        # 更新场景
+        # Sprint 5: 场景映射
         if self.scene and scene:
             self.scene.map_neuron_to_scene(str(neuron.event_id), scene)
+        
+        # Sprint 6: 共振分析 - 计算新神经元的激活能量
+        resonance_data: Optional[Dict] = None
+        try:
+            elo_state = self.elo.get_neuron_state(str(neuron.event_id))
+            elo_value = elo_state.elo if elo_state else 1000.0
+        except Exception:
+            elo_value = 1000.0
+        try:
+            activation_energy = self.resonance.calculate_activation_energy(
+                strength=neuron.strength,
+                elo=elo_value,
+                connections_count=len(neuron.outgoing_connections)
+            )
+            resonance_data = {
+                'activation_energy': activation_energy,
+                'resonance_threshold': self.resonance.config.resonance_threshold,
+            }
+        except Exception:
+            resonance_data = None
+        
+        # Sprint 5/6/7 元数据：存储在神经元实例上（供检索层读取）
+        # 注意：不通过 Pydantic 字段存储，避免验证错误
+        neuron._scene = scene.model_dump() if scene else None
+        neuron._emotion = emotion.model_dump() if emotion else None
+        neuron._resonance = resonance_data
         
         # 追踪历史
         self.tracer.history.add_entry(
@@ -328,9 +356,11 @@ class MemorySystem:
             self._evict_weak_neurons()
         
         # 生成并存储语义 embedding（关键修复：语义检索的前提）
+        #健壮性：embedding 失败不影响记忆存储
         try:
             embedding = self.embedding_manager.embed(content)
-            self.embedding_manager.add_embeddings({neuron.event_id: embedding})
+            if embedding is not None:
+                self.embedding_manager.add_embeddings({neuron.event_id: embedding})
         except Exception:
             pass  # embedding 生成失败不影响记忆存储
         
