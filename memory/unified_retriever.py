@@ -5,9 +5,10 @@
 - Elo 竞争机制
 - 动态衰减
 - 综合评分排序
+- 场景敏感检索（Sprint 5）
 
 检索评分公式:
-    score = similarity × Elo_strength × decay_factor × recency_factor
+    score = similarity × Elo_strength × decay_factor × recency_factor × scene_weight
 """
 
 import math
@@ -20,7 +21,11 @@ from memory.neuron import NeuronCell
 from memory.engram import Engram
 from memory.elo import EloCompetition, calculate_combat_score
 from memory.decay import calculate_decay_rate, DecayScheduler, apply_decay
+from memory.decay import calculate_emotion_aware_decay  # Sprint 7 集成
 from memory.utils import now as utc_now, from_naive, ensure_aware
+
+# Sprint 5 集成: 导入场景模块
+from memory.scene import SceneContext, SceneSensitiveMapper, SceneAwareRetrieval
 
 
 # ============== 配置常量 ==============
@@ -65,6 +70,9 @@ class RetrievalConfig(BaseModel):
     recency_half_life_days: float = RECENCY_HALF_LIFE_DAYS
     enable_elo_competition: bool = True
     enable_decay: bool = True
+    # Sprint 5 集成: 场景敏感检索
+    enable_scene_sensitivity: bool = True
+    scene_weight: float = 0.2  # 场景权重
 
 
 # ============== 核心算法 ==============
@@ -154,16 +162,22 @@ class UnifiedRetriever:
         self,
         retrieval_config: Optional[RetrievalConfig] = None,
         elo_competitor: Optional[EloCompetition] = None,
-        decay_scheduler: Optional[DecayScheduler] = None
+        decay_scheduler: Optional[DecayScheduler] = None,
+        # Sprint 5 集成: 场景敏感检索
+        scene_retrieval: Optional[SceneAwareRetrieval] = None
     ):
         self.config = retrieval_config or RetrievalConfig()
         self.elo = elo_competitor or EloCompetition()
         self.decay = decay_scheduler or DecayScheduler()
+        # Sprint 5 集成
+        self.scene_retrieval = scene_retrieval or SceneAwareRetrieval()
     
     def register_neuron(
         self,
         neuron: NeuronCell,
-        impact_score: float = 0.5
+        impact_score: float = 0.5,
+        # Sprint 5 集成: 场景注册
+        scene: Optional[SceneContext] = None
     ) -> None:
         """
         注册神经元到检索系统
@@ -171,28 +185,39 @@ class UnifiedRetriever:
         Args:
             neuron: 神经元
             impact_score: 冲击力评分
+            scene: 场景上下文（可选）
         """
         # 注册到 Elo 系统
         self.elo.register_neuron(neuron.event_id)
         
-        # 注册到衰减系统
-        self.decay.register_neuron(
-            event_id=neuron.event_id,
-            event_type=neuron.event_type,
-            impact_score=impact_score,
-            created_at=neuron.create_time
-        )
+        # 更新神经元的衰减率（Sprint 7: 支持情绪感知）
+        # 如果神经元有情绪信息，使用情绪感知衰减
+        if hasattr(neuron, 'emotional_arousal') and neuron.emotional_arousal != 0.5:
+            decay_rate = calculate_emotion_aware_decay(
+                event_type=neuron.event_type,
+                emotional_valence=getattr(neuron, 'emotional_valence', 0.0),
+                emotional_arousal=neuron.emotional_arousal,
+                base_decay=0.995
+            )
+        else:
+            decay_rate = calculate_decay_rate(neuron.event_type, impact_score)
         
-        # 更新神经元的衰减率
-        decay_rate = calculate_decay_rate(neuron.event_type, impact_score)
         neuron.decay_rate = decay_rate
         neuron.impact_score = impact_score
+        
+        # Sprint 5 集成: 注册到场景系统
+        if scene and self.config.enable_scene_sensitivity:
+            self.scene_retrieval.mapper.map_neuron_to_scene(
+                str(neuron.event_id), scene
+            )
     
     def calculate_retrieval_score(
         self,
         neuron: NeuronCell,
         similarity: float,
-        reference_time: Optional[datetime] = None
+        reference_time: Optional[datetime] = None,
+        # Sprint 5 集成: 场景感知
+        current_scene: Optional[SceneContext] = None
     ) -> Tuple[float, Dict[str, float]]:
         """
         计算单个神经元的检索评分
@@ -201,6 +226,7 @@ class UnifiedRetriever:
             neuron: 神经元
             similarity: 语义相似度
             reference_time: 参考时间
+            current_scene: 当前场景（可选）
         
         Returns:
             (score, breakdown_dict)
@@ -228,24 +254,36 @@ class UnifiedRetriever:
         normalized_elo = 0.5 + 0.5 * (elo_strength - 100) / 1900
         normalized_elo = max(0.1, min(2.0, normalized_elo))
         
+        # Sprint 5 集成: 计算场景权重
+        scene_weight = 1.0
+        if current_scene and self.config.enable_scene_sensitivity:
+            scene_weight = self.scene_retrieval.calculate_scene_weight(
+                str(neuron.event_id), current_scene
+            )
+        
         # 加权综合评分
+        total_weight = (
+            self.config.similarity_weight +
+            self.config.elo_weight +
+            self.config.decay_weight +
+            self.config.recency_weight +
+            (self.config.scene_weight if self.config.enable_scene_sensitivity else 0)
+        )
+        
         score = (
             self.config.similarity_weight * similarity +
             self.config.elo_weight * normalized_elo +
             self.config.decay_weight * decay_factor +
-            self.config.recency_weight * recency_factor
-        ) / (
-            self.config.similarity_weight +
-            self.config.elo_weight +
-            self.config.decay_weight +
-            self.config.recency_weight
-        )
+            self.config.recency_weight * recency_factor +
+            (self.config.scene_weight * scene_weight if self.config.enable_scene_sensitivity else 0)
+        ) / total_weight
         
         breakdown = {
             'similarity': similarity,
             'elo_strength': normalized_elo,
             'decay_factor': decay_factor,
             'recency_factor': recency_factor,
+            'scene_weight': scene_weight,
         }
         
         return score, breakdown
@@ -256,7 +294,9 @@ class UnifiedRetriever:
         query_embedding: np.ndarray,
         embedding_manager: Any,
         event_stream: Any,
-        reference_time: Optional[datetime] = None
+        reference_time: Optional[datetime] = None,
+        # Sprint 5 集成: 场景感知检索
+        current_scene: Optional[SceneContext] = None
     ) -> List[RetrievalResult]:
         """
         执行统一检索
@@ -267,6 +307,7 @@ class UnifiedRetriever:
             embedding_manager: embedding 管理器（有 calculate_similarities 方法）
             event_stream: 事件流（有 get_event 方法）
             reference_time: 参考时间
+            current_scene: 当前场景（可选）
         
         Returns:
             按评分排序的检索结果
@@ -290,7 +331,7 @@ class UnifiedRetriever:
                 continue
             
             score, breakdown = self.calculate_retrieval_score(
-                neuron, similarity, reference_time
+                neuron, similarity, reference_time, current_scene
             )
             
             # 获取事件内容
@@ -307,6 +348,7 @@ class UnifiedRetriever:
                 'elo_strength': breakdown['elo_strength'],
                 'decay_factor': breakdown['decay_factor'],
                 'recency_factor': breakdown['recency_factor'],
+                'scene_weight': breakdown.get('scene_weight', 1.0),
                 'content': content,
             })
         

@@ -2,6 +2,8 @@
 Decay 核心算法
 
 实现记忆的动态衰减机制。
+
+Sprint 7 集成: 情绪 → 冲击力 → 衰减率
 """
 
 import math
@@ -14,6 +16,9 @@ from memory.schemas import (
     DECAY_RATE_RANGE, BASE_DECAY_RATES, IMPACT_DECAY_FACTOR
 )
 from memory.utils import now as utc_now, from_naive
+
+# Sprint 7 集成: 导入情绪模块
+from memory.emotion import EmotionalImpact, ImpactMapper
 
 
 # ============== 核心算法 ==============
@@ -41,6 +46,80 @@ def calculate_decay_rate(
     # 限制范围
     min_rate, max_rate = config.decay_rate_range
     return max(min_rate, min(max_rate, adjusted))
+
+
+def calculate_emotion_aware_decay(
+    event_type: str,
+    emotional_valence: float = 0.0,
+    emotional_arousal: float = 0.5,
+    emotional_dominance: float = 0.5,
+    base_decay: float = 0.995,
+    impact_mapper: Optional[ImpactMapper] = None
+) -> float:
+    """
+    Sprint 7 集成: 从情绪计算衰减率
+    
+    高冲击情绪 -> 慢衰减
+    低冲击情绪 -> 快衰减
+    
+    Args:
+        event_type: 事件类型
+        emotional_valence: 情绪效价 [-1, 1]
+        emotional_arousal: 情绪唤醒度 [0, 1]
+        emotional_dominance: 情绪主导性 [0, 1]
+        base_decay: 基础衰减率
+        impact_mapper: 冲击力映射器（可选）
+    
+    Returns:
+        调整后的衰减率
+    """
+    # 创建情绪对象
+    emotion = EmotionalImpact(
+        valence=emotional_valence,
+        arousal=emotional_arousal,
+        dominance=emotional_dominance
+    )
+    
+    # 使用 ImpactMapper 映射到衰减率
+    mapper = impact_mapper or ImpactMapper()
+    return mapper.map_emotion_to_decay(emotion, base_decay)
+
+
+def apply_decay_with_emotion(
+    neuron_state: NeuronDecayState,
+    emotional_valence: float = 0.0,
+    emotional_arousal: float = 0.5,
+    reference_time: Optional[datetime] = None
+) -> float:
+    """
+    Sprint 7 集成: 应用情绪感知的衰减
+    
+    结合情绪影响动态调整衰减率
+    
+    Args:
+        neuron_state: 神经元衰减状态
+        emotional_valence: 情绪效价
+        emotional_arousal: 情绪唤醒度
+        reference_time: 参考时间
+    
+    Returns:
+        衰减后的强度
+    """
+    # 先应用基础衰减
+    new_strength = apply_decay(neuron_state, reference_time)
+    
+    # 根据情绪调整衰减率
+    emotion_decay = calculate_emotion_aware_decay(
+        event_type=neuron_state.event_type,
+        emotional_valence=emotional_valence,
+        emotional_arousal=emotional_arousal,
+        base_decay=neuron_state.decay_rate
+    )
+    
+    # 更新神经元的衰减率
+    neuron_state.decay_rate = emotion_decay
+    
+    return new_strength
 
 
 def apply_decay(

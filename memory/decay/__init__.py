@@ -18,6 +18,9 @@ from memory.decay.core import (
     DecayScheduler,
     get_global_scheduler,
     reset_global_scheduler,
+    # Sprint 7 集成
+    calculate_emotion_aware_decay,
+    apply_decay_with_emotion,
 )
 
 # 为了向后兼容
@@ -36,6 +39,10 @@ __all__ = [
     'DecayScheduler',
     'get_global_scheduler',
     'reset_global_scheduler',
+    
+    # Sprint 7 集成
+    'calculate_emotion_aware_decay',
+    'apply_decay_with_emotion',
     
     # 配置和模型
     'DecayConfig',

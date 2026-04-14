@@ -49,6 +49,14 @@ class NeuronCell(BaseModel):
     # 是否为稳固记忆（代表神经元）
     is_consolidated: bool = False
     
+    # === Sprint 7 新增字段：情绪与冲击力 ===
+    # 情绪效价 [-1, 1]，-1=负面, 0=中性, 1=正面
+    emotional_valence: float = 0.0
+    # 情绪唤醒度 [0, 1]，0=平静, 1=激动
+    emotional_arousal: float = 0.5
+    # 情绪主导性 [0, 1]，0=被动, 1=主动
+    emotional_dominance: float = 0.5
+    
     # === 原有字段 ===
     actor: str
     audience: Optional[List[str]] = None
@@ -139,6 +147,40 @@ class NeuronCell(BaseModel):
     def update_impact_score(self, impact_score: float) -> None:
         """更新冲击力评分"""
         self.impact_score = max(0.0, min(1.0, impact_score))
+    
+    def set_emotion(
+        self,
+        valence: float = 0.0,
+        arousal: float = 0.5,
+        dominance: float = 0.5
+    ) -> float:
+        """
+        设置情绪并自动计算冲击力评分
+        
+        Sprint 7 集成：情绪 → 冲击力 → 衰减率
+        
+        Args:
+            valence: 情绪效价 [-1, 1]
+            arousal: 情绪唤醒度 [0, 1]
+            dominance: 情绪主导性 [0, 1]
+        
+        Returns:
+            计算后的 impact_score
+        """
+        self.emotional_valence = max(-1.0, min(1.0, valence))
+        self.emotional_arousal = max(0.0, min(1.0, arousal))
+        self.emotional_dominance = max(0.0, min(1.0, dominance))
+        
+        # 计算冲击力：情绪强度 = 唤醒度 * (1 - |效价|)
+        # 高唤醒 + 中性效价 = 最高冲击力
+        emotional_intensity = self.emotional_arousal * (1.0 - abs(self.emotional_valence))
+        
+        # 效价绝对值贡献
+        valence_boost = abs(self.emotional_valence) * 0.2
+        
+        self.impact_score = min(1.0, emotional_intensity + valence_boost)
+        
+        return self.impact_score
     
     def is_retrievable(self, cue_strength: float = 1.0) -> bool:
         """
