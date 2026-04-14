@@ -1,57 +1,311 @@
-# Companion-agent
+# Engram 记忆系统
 
-# TODO
+**版本**: 1.0.0  
+**更新时间**: 2026-04-14
 
-- [X] 完善retrieve模块，让模型选择怎么retrieve
-  - [X] 利用神经元之间的连接强度来进行retrieve
-  - [X] 如何在检索后更新神经元的连接强度
-  - [X] 如何产生一个新的engram
-  - [X] 怎么让LLM自己判断是否需要retrieve
-  - [X] 可能需要在每次启动的时候保留一点上次的对话
-  - [X] 可能需要在persona里加一个简要的信息
-- [X] 需要定义一个List[Engram] 或者 Dict[UUID1, Engram]的类来简化代码
-- [X] reflection逻辑还需要优化，怎么自动做reflection
-- [X] 怎么存储
-  - [X] 现在把embedding都存到json文件里，显然有点冗余，但是不存embedding又会很慢，后面把embedding单独提取出来存到一个地方
-  - [X] 存到mongoDB里
-- [ ] 考虑是否需要给用户也设置一个agent和schedule类并存储下来
-- [ ] 加入schedule和experience的更改逻辑
-- [X] 同时和多个用户对话
-
-### 神经元之间的连接
-
-神经元之间的连接的可能用处：（指的是原版的chat序列、chat和thought、engram代表的连接）
-
-- 用于merge、delete神经元等
-  - 可以在reflection或者转成engram的时候计算每个神经元和代表神经元的强度，过低的可以删掉
-- 用于retrieve
-  - retrieve根据相似度和强度来retrieve最相似的，而连接则在于返回的时候可以返回上下文
-  - 后续思考怎么通过连接强度来检索；Markov chain是一个思路但是太复杂
-
-### schedule还需要处理
-
-将schedule的更新加入到现有的system中：
-
-- 用schedule记录特殊的行程还是用一个event记录，还是都要，或者给schedule一个从experience event到schedule event的映射
-
-### elo的想法
-
- 本质上还是处理神经元之间的连接，每个神经元都有一个elo值。
- 可以把一次retrieve进来的query当作是一次信号的传递，那么按照engram本来的定义就是几个神经元去竞争这个信号获得激活，这些神经元的信号就会保留下来形成这个事件的印迹。
-
-elo是可以用来刻画这种竞争的，某种程度上就相当于上面提到的strength。
-
-现在假设每个神经元有一个初始elo，当一个信号进来的时候，（这里暂时把query的embedding当成信号），每个神经元可以根据自己的embedding去计算相似度。将这些相似度做一个归一化，比如softmax，作为一个初始的信号分配。之后就是竞争信号的过程。将这个初始的信号权重乘elo，得到了该神经元在这次竞争中的战斗力。在排名检索之后根据这个结果来更新原始的elo权重。这样就是一个动态更新strength的方法，他会比每次检索到都简单加一个delta值会更平衡。
-
-这样的合理之处在于，engram有一个summary信息，当我们通过summary检索到engram的时候，如果我们发现这个检索的summary不足以完成任务的时候我们需要进一步对engram的细节信息进行检索。因为engram本身是一个有主题的事件，通过这样的操作可以更集中在与engram主题相关的神经元上。
-
-举例来说，就好像我的engram是我上周去看了eason的演唱会。如果每个人都问我他安可唱了什么歌，那么相应的神经元elo就会提高。这说明当我需要检索我去看了eason演唱会这个事件的时候，有很大概率别人会继续问我他安可唱了什么。这提供了一种更主动的检索方式。
+Engram 是一个受神经科学启发的 AI 伴侣记忆系统，模拟人类记忆的形成、巩固、检索和遗忘机制。
 
 ---
 
-## 项目文档
+## 核心概念
 
-- `docs/plans/SPRINT.md` - 当前 Sprint 任务清单
-- `docs/plans/pitfalls.md` - 陷阱知识库
-- `docs/orch/` - 迭代执行文件（plan.md, gen_status.md, eval.md）
+### 神经科学基础
 
+| 概念 | 说明 |
+|------|------|
+| **神经元 (NeuronCell)** | 记忆的基本单元，类似生物神经元的激活-抑制机制 |
+| **记忆痕迹 (Engram)** | 一组神经元的集合，代表完整的记忆片段 |
+| **Hebbian 学习** | "一起激活的神经元，连接在一起" |
+| **动态衰减** | 低价值记忆逐渐遗忘，高冲击记忆长期保留 |
+| **Elo 竞争** | 神经元通过竞争获取激活资源 |
+
+### 五大记忆模块
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      Memory System                          │
+├─────────────────────────────────────────────────────────────┤
+│  ShortTermMemory  │  EpisodicMemory  │  WorkingMemory      │
+│  (海马体)         │  (新皮层)         │  (前额叶)            │
+├─────────────────────────────────────────────────────────────┤
+│                     NeuronCell Layer                         │
+│  Elo Competition  │  Decay Scheduler  │  Stability Manager  │
+├─────────────────────────────────────────────────────────────┤
+│                    Supporting Modules                        │
+│  DMN Consolidation  │  Causal Inference  │  Scene Awareness  │
+│  Resonance Engine   │  Emotional Impact  │  Dynamics         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 快速开始
+
+### 安装
+
+```bash
+pip install -r requirements.txt
+```
+
+### 基本使用
+
+```python
+from memory import MemorySystem, EmotionalImpact
+
+# 初始化系统
+system = MemorySystem()
+
+# 添加带情绪的记忆
+emotion = EmotionalImpact(valence=0.8, arousal=0.9, dominance=0.7)
+neuron = system.add_memory(
+    content="今天完成了重要的项目演示",
+    event_type="experience",
+    emotion=emotion
+)
+
+# 检索记忆
+results = system.retrieve("项目演示", top_k=5)
+for neuron in results:
+    print(f"找到记忆: {neuron.event_type}")
+```
+
+---
+
+## 模块架构图
+
+```mermaid
+graph TB
+    subgraph "Agent Layer"
+        Persona[Persona]
+        Brain[Brain]
+    end
+
+    subgraph "Memory System"
+        STM[ShortTermMemory]
+        EM[EpisodicMemory]
+    end
+
+    subgraph "Neuron Layer"
+        Neuron[NeuronCell]
+        Engram[Engram]
+        Connection[Connection]
+    end
+
+    subgraph "Core Mechanisms"
+        Elo[Elo Competition]
+        Decay[Decay Scheduler]
+        Stability[Stability Manager]
+    end
+
+    subgraph "Advanced Modules"
+        DMN[DMN Consolidation]
+        Causal[Causal Inference]
+        Scene[Scene Awareness]
+        Resonance[Resonance Engine]
+        Emotion[Emotional Impact]
+        Dynamics[Dynamics Manager]
+    end
+
+    subgraph "Optimization"
+        Index[Memory Index]
+        Batch[Batch Processor]
+        Viz[Visualization]
+    end
+
+    Persona --> Brain
+    Brain --> STM
+    STM --> EM
+    EM --> Neuron
+    Neuron --> Connection
+    Neuron --> Elo
+    Neuron --> Decay
+    Neuron --> Stability
+    Elo --> DMN
+    Decay --> DMN
+    Stability --> DMN
+    DMN --> Causal
+    Causal --> Resonance
+    Emotion --> Decay
+    Dynamics --> Neuron
+    Index --> Neuron
+    Batch --> Elo
+    Viz --> Neuron
+```
+
+---
+
+## 核心类说明
+
+### NeuronCell（神经元）
+
+```python
+class NeuronCell:
+    event_id: UUID1              # 唯一标识
+    event_type: str               # chat/perception/thought/reflection/experience
+    strength: float               # 强度值 (Elo 评分)
+    decay_rate: float             # 衰减率
+    impact_score: float           # 冲击力评分 [0, 1]
+    activation_threshold: float   # 激活阈值
+    is_consolidated: bool         # 是否为稳固记忆
+    
+    # 情绪字段 (Sprint 7)
+    emotional_valence: float      # 效价 [-1, 1]
+    emotional_arousal: float      # 唤醒度 [0, 1]
+    emotional_dominance: float   # 主导性 [0, 1]
+    
+    # 连接
+    outgoing_connections: Set     # 出向连接
+    incoming_connections: Set     # 入向连接
+```
+
+### Engram（记忆痕迹）
+
+```python
+class Engram:
+    engram: Dict[str, List[NeuronCell]]  # 按类型组织的神经元
+    represent: UUID1                      # 代表神经元 ID
+    strength: float                       # 整体强度
+    summary: str                          # LLM 生成的摘要
+    scope: Literal["full", "partial"]     # 加载范围
+```
+
+### MemorySystem（统一入口）
+
+```python
+class MemorySystem:
+    elo: EloCompetition                  # Elo 竞争系统
+    decay: DecayScheduler               # 衰减调度器
+    stability: StabilityManager          # 稳定性管理器
+    dmn: DMNMode                        # DMN 巩固模式
+    causal: CausalInference             # 因果推理
+    scene: SceneAwareRetrieval          # 场景感知
+    resonance: ResonanceEngine          # 共振引擎
+    dynamics: NeuronDynamics            # 动态管理器
+    index: MemoryIndex                  # 记忆索引
+```
+
+---
+
+## 使用示例
+
+### 1. 添加记忆
+
+```python
+from memory import MemorySystem, EmotionalImpact, SceneContext
+
+system = MemorySystem()
+
+# 基础记忆
+neuron = system.add_memory(
+    content="用户说他喜欢科幻电影",
+    event_type="chat",
+    actor="user",
+    audience=["assistant"]
+)
+
+# 带情绪的记忆
+emotion = EmotionalImpact(valence=0.7, arousal=0.6, dominance=0.5)
+neuron = system.add_memory(
+    content="我们一起看了星际穿越",
+    event_type="experience",
+    emotion=emotion
+)
+
+# 带场景的记忆
+scene = SceneContext(location="电影院", time="evening")
+neuron = system.add_memory(
+    content="约会看电影",
+    event_type="experience",
+    scene=scene
+)
+```
+
+### 2. 检索记忆
+
+```python
+# 基础检索
+results = system.retrieve("科幻", top_k=5)
+
+# 带场景过滤
+scene = SceneContext(location="电影院")
+results = system.retrieve("电影", scene=scene)
+
+# 按类型过滤
+results = system.retrieve("喜欢", event_types=["chat", "experience"])
+```
+
+### 3. 触发 DMN 巩固
+
+```python
+result = system.run_dmn_consolidation()
+print(f"巩固了 {result.consolidations} 个记忆")
+print(f"修剪了 {result.prunings} 个弱连接")
+```
+
+### 4. 动态管理
+
+```python
+# 获取需要巩固的神经元
+weak_neurons = system.dynamics.get_neurons_to_strengthen(threshold=0.3)
+
+# 获取需要遗忘的神经元
+dying_neurons = system.dynamics.get_neurons_to_forget()
+
+# 执行出生（创建新神经元）
+new_neuron = system.dynamics.birth_neuron(
+    content="新的兴趣点",
+    reason=BirthReason.NEW_INTEREST
+)
+```
+
+---
+
+## 项目结构
+
+```
+companion-agent/
+├── agent/                    # Agent 核心
+│   ├── agent.py
+│   ├── brain.py
+│   └── persona.py
+├── memory/                   # 记忆系统核心
+│   ├── neuron.py            # 神经元单元
+│   ├── engram.py            # 记忆痕迹
+│   ├── event.py            # 事件流
+│   ├── memory.py           # 短/长期记忆
+│   ├── elo/                # Elo 竞争机制
+│   ├── decay/              # 动态衰减
+│   ├── stability/          # 稳定性管理
+│   ├── dmn/                # DMN 巩固
+│   ├── causal/             # 因果推理
+│   ├── scene/              # 场景感知
+│   ├── resonance/          # 共振引擎
+│   ├── emotion/            # 情绪处理
+│   ├── dynamics/           # 动态增删
+│   ├── optimization/       # 性能优化
+│   └── viz/                # 可视化
+├── docs/                    # 文档
+│   ├── ARCHITECTURE.md     # 架构设计
+│   ├── API.md              # API 文档
+│   ├── DATA_MODEL.md       # 数据模型
+│   ├── USAGE.md            # 使用指南
+│   └── SPRINTS.md          # Sprint 记录
+├── tests/                   # 测试
+└── main.py                 # 入口
+```
+
+---
+
+## 文档导航
+
+- **[架构设计](docs/ARCHITECTURE.md)** - 系统架构、模块职责、设计决策
+- **[API 文档](docs/API.md)** - 所有公开接口、参数说明、示例代码
+- **[数据模型](docs/DATA_MODEL.md)** - 核心数据结构、字段说明
+- **[使用指南](docs/USAGE.md)** - 安装、基础/高级用法、最佳实践
+- **[Sprint 记录](docs/SPRINTS.md)** - 每个 Sprint 的目标、决策、限制
+
+---
+
+## 许可证
+
+MIT License

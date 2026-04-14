@@ -15,6 +15,7 @@ from service.payload import *
 
 from agent.brain import MasterBrain
 from service.webui import webui
+from service.memory_api import router as memory_router
 
 #设置根日志记录器
 root_logger = logging.getLogger()
@@ -99,6 +100,7 @@ async def chatSync(req: ChatEventRequest):
 ui = webui()
 app = gr.mount_gradio_app(app, ui, path="/ai-companion/api/gradio")
 app.include_router(router, prefix="/ai-companion")
+app.include_router(memory_router, prefix="/ai-companion/api")
 
 
 if __name__ == '__main__':
