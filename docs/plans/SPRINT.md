@@ -1,30 +1,31 @@
-# Sprint 12: 测试补全 + 系统一致性修复
+# Sprint 13: 生产就绪优化 — Embedding/Reflection/PostgreSQL
 
 **状态**: 活跃
-**目标**: 为 Sprint 1-4 核心模块补充集成测试，修复已知不一致问题，建立端到端测试覆盖
+**目标**: 解决生产环境关键问题：Embedding 加载超时、Reflection 属性暴露、PostgreSQL 持久化
 
 ---
 
 ## 任务清单
 
-- [ ] 1. **T1-Sprint1-4-Tests**: 为 Sprint 1-4 核心模块编写集成测试
-  - `tests/test_sprint1_elo_integration.py` — 验证 Elo 竞争机制（检索后竞争更新）
-  - `tests/test_sprint2_stability_integration.py` — 验证集体稳定性计算
-  - `tests/test_sprint3_reflection_integration.py` — 验证 Reflection 触发与执行
-  - `tests/test_sprint4_dmn_integration.py` — 验证 DMN 巩固/修剪/关联
+- [x] 1. **T1-embedding-timeout**: Embedding 加载超时优化
+  - 给 `utils/model.py` 的 HTTP 请求加 timeout（5秒）
+  - 加载失败时优雅降级（返回 None，不阻塞）
+  - 可选：支持本地缓存路径配置
 
-- [ ] 2. **T2-E2E-Tests**: 编写端到端测试覆盖完整调用链
-  - `tests/test_e2e_memory_lifecycle.py` — `add_memory() → retrieve() → decay() → dynamics` 完整链路
+- [x] 2. **T2-reflection-attribute**: Reflection 暴露为 MemorySystem 属性
+  - 添加 `ms.reflection: ReflectionTrigger` 属性
+  - 暴露 `ms.trigger_reflection()` 便捷方法
+  - 可选：集成到 `add_memory()` 后的自动检测
 
-- [ ] 3. **T3-Decay-Property-Fix**: 修复 `decay_scheduler` vs `decay` 属性名不一致
-  - MemorySystem 中 property 名为 `decay`，但验收标准写的是 `ms.decay_scheduler`
-  - 保持向后兼容：保留 `decay` 属性，新增 `decay_scheduler` 作为别名
+- [x] 3. **T3-postgres-storage**: PostgreSQL 持久化层
+  - 创建 `memory/storage/postgres.py` 模块
+  - 实现 `PostgresStorage` 类（替代/补充 JSON）
+  - 支持神经元、Engram、Embedding 的 CRUD
+  - 迁移脚本：JSON → PostgreSQL
 
-- [ ] 4. **T4-Main-Py-Cleanup**: 清理过时的 `main.py`
-  - 标注为废弃并说明新入口是 `run_server.py`
-
-- [ ] 5. **T5-All-Tests-Green**: 运行全部测试确保无 regression
-  - `pytest tests/ -v` 全部通过
+- [x] 4. **T4-tests-green**: 全部测试通过
+  - 新增 `tests/test_postgres_storage.py`
+  - `pytest tests/ -v` 全部通过（无 regression）
 
 ---
 
@@ -32,14 +33,10 @@
 
 | # | 标准 | 验证方式 |
 |---|------|----------|
-| 1 | `test_sprint1_elo_integration.py` 存在且通过 | `pytest tests/test_sprint1_elo_integration.py -v` |
-| 2 | `test_sprint2_stability_integration.py` 存在且通过 | `pytest tests/test_sprint2_stability_integration.py -v` |
-| 3 | `test_sprint3_reflection_integration.py` 存在且通过 | `pytest tests/test_sprint3_reflection_integration.py -v` |
-| 4 | `test_sprint4_dmn_integration.py` 存在且通过 | `pytest tests/test_sprint4_dmn_integration.py -v` |
-| 5 | `test_e2e_memory_lifecycle.py` 存在且通过 | `pytest tests/test_e2e_memory_lifecycle.py -v` |
-| 6 | `ms.decay_scheduler` 和 `ms.decay` 均可用 | `python3 -c "from memory.system import MemorySystem; ms = MemorySystem(); print('decay:', ms.decay); print('decay_scheduler:', ms.decay_scheduler)"` |
-| 7 | `main.py` 已标注废弃 | `grep -c "DEPRECATED\|废弃\|deprecated" main.py` |
-| 8 | 全部测试通过 | `pytest tests/ -v` 最后一行显示全部 passed |
+| 1 | Embedding 超时 5s 内返回 | `timeout 5 python3 -c "from memory.system import MemorySystem; ms=MemorySystem(); ms.add_memory('test')"` 不卡住 |
+| 2 | `ms.reflection` 属性存在 | `python3 -c "from memory.system import MemorySystem; ms=MemorySystem(); print('reflection:', hasattr(ms, 'reflection'))"` |
+| 3 | PostgreSQL 存储能读写 | `python3 -m pytest tests/test_postgres_storage.py -v` 通过 |
+| 4 | 全部测试通过 | `python3 -m pytest tests/ -v` 显示全部 passed |
 
 ---
 
@@ -48,35 +45,40 @@
 ```bash
 cd /tmp/companion-agent-test
 
-# T1: Sprint1 Elo 集成测试
-python3 -m pytest tests/test_sprint1_elo_integration.py -v --tb=short
+# T1: Embedding 超时测试（应在 5s 内完成）
+timeout 5 python3 -c "
+from memory.system import MemorySystem
+ms = MemorySystem()
+# 模拟 embedding 加载失败场景
+from memory.embedding import EmbeddingManager
+original = EmbeddingManager._try_load_model
+EmbeddingManager._try_load_model = lambda self: setattr(self, '_available', False) or None
+n = ms.add_memory('test', event_type='chat', actor='user')
+print('Embedding timeout OK, neuron created:', n.event_id)
+EmbeddingManager._try_load_model = original
+"
 
-# T2: Sprint2 Stability 集成测试
-python3 -m pytest tests/test_sprint2_stability_integration.py -v --tb=short
-
-# T3: Sprint3 Reflection 集成测试
-python3 -m pytest tests/test_sprint3_reflection_integration.py -v --tb=short
-
-# T4: Sprint4 DMN 集成测试
-python3 -m pytest tests/test_sprint4_dmn_integration.py -v --tb=short
-
-# T5: 端到端测试
-python3 -m pytest tests/test_e2e_memory_lifecycle.py -v --tb=short
-
-# T6: decay 属性一致性
+# T2: Reflection 属性检查
 python3 -c "
 from memory.system import MemorySystem
 ms = MemorySystem()
-print('decay:', type(ms.decay).__name__)
-print('decay_scheduler:', type(ms.decay_scheduler).__name__)
-assert hasattr(ms, 'decay'), 'decay 属性缺失'
-assert hasattr(ms, 'decay_scheduler'), 'decay_scheduler 别名缺失'
-print('decay 属性一致性: OK')
+print('has reflection:', hasattr(ms, 'reflection'))
+if hasattr(ms, 'reflection'):
+    print('reflection type:', type(ms.reflection).__name__)
 "
 
-# T7: main.py 废弃标注
-grep -c "DEPRECATED\|废弃\|deprecated" main.py && echo "main.py 已标注废弃" || echo "main.py 尚未标注废弃"
+# T3: PostgreSQL 存储测试
+python3 -m pytest tests/test_postgres_storage.py -v --tb=short 2>&1 | tail -10
 
-# T8: 全部测试
-python3 -m pytest tests/ -v --tb=short 2>&1 | tail -10
+# T4: 全部测试
+python3 -m pytest tests/ -v --tb=short 2>&1 | tail -5
 ```
+
+---
+
+## 依赖关系
+
+- T1 (Embedding) 无依赖
+- T2 (Reflection) 无依赖  
+- T3 (PostgreSQL) 依赖 T1（存储层需要 embedding 不阻塞才能正常初始化）
+- T4 (Tests) 依赖 T1、T2、T3

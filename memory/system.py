@@ -44,6 +44,9 @@ from memory.viz import MemoryHistory, MemoryTracer, NetworkVisualizer
 # Sprint 10: 优化
 from memory.optimization import MemoryIndex, BatchProcessor, BatchConfig
 
+# Sprint 11: Reflection 触发器
+from memory.reflection import ReflectionTrigger
+
 # 核心类
 from memory.neuron import NeuronCell
 from memory.engram import Engram
@@ -151,6 +154,9 @@ class MemorySystem:
         # Sprint 10: 优化
         self.index = MemoryIndex() if self.config.enable_index else None
         self.batch = BatchProcessor(self.config.batch_config)
+
+        # Sprint 11: Reflection 触发器
+        self.reflection = ReflectionTrigger()
 
         # 核心依赖：Embedding + EventStream + 统一检索器
         self._embedding_manager: Optional[EmbeddingManager] = None
@@ -634,7 +640,38 @@ class MemorySystem:
                 stats['births'] += 1
         
         return stats
-    
+
+    def trigger_reflection(self, similarity_fn=None) -> List:
+        """
+        触发 Reflection 检测流程。
+
+        调用 self.reflection.check_triggers() 检测记忆冲突、新关联等条件，
+        并返回触发的条件列表。
+
+        Args:
+            similarity_fn: 可选，相似度计算函数，签名为 (Engram, Engram) -> float
+
+        Returns:
+            List[TriggerCondition]: 触发的条件列表（按优先级排序）
+        """
+        # 从 engrams 获取所有 Engram
+        engrams = list(self._engrams.values()) if hasattr(self, '_engrams') else []
+
+        # 从 neurons 获取最近的神经元
+        recent_neurons = list(self._neurons.values())
+
+        # 更新基线连接状态
+        self.reflection.update_baseline(recent_neurons)
+
+        # 检查触发条件
+        triggers = self.reflection.check_triggers(
+            engrams=engrams,
+            recent_neurons=recent_neurons,
+            similarity_fn=similarity_fn
+        )
+
+        return triggers
+
     def batch_retrieve(
         self,
         query: str,

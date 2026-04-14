@@ -115,15 +115,42 @@ class Word2VecModel:
         return embed
         
         
-def get_embedding_model(model_name='text2vec'):
+import signal
+import functools
+
+class _EmbeddingLoadTimeout(Exception):
+    """Raised when embedding model loading exceeds timeout."""
+    pass
+
+def _timeout_handler(signum, frame):
+    raise _EmbeddingLoadTimeout("Embedding model loading timed out")
+
+def get_embedding_model(model_name='text2vec', timeout: int = 5):
     #support bge-large-zh and text2vec
     assert model_name in ['text2vec', 'bge', 'keyword'], 'currently only support text2vec, bge and keyword model'
-    if model_name=='text2vec':
-        model = SentenceModel('models/text2vec-base-chinese-paraphrase')
-    elif model_name=='bge':
-        model = BGEModel('models/DPR/bge-large/bge.onnx')
-    elif model_name=='keyword':
-        model = Word2VecModel('models/tencent_word2vec/tencent-ailab-embedding-zh-d100-v0.2.0-s')
-    
-    return model
+
+    # Apply signal-based timeout on Linux (SIGALRM only works in main thread)
+    using_timeout = [False]
+    old_handler = None
+    if hasattr(signal, 'SIGALRM'):
+        old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+        signal.alarm(timeout)
+        using_timeout[0] = True
+
+    try:
+        if model_name=='text2vec':
+            model = SentenceModel('models/text2vec-base-chinese-paraphrase')
+        elif model_name=='bge':
+            model = BGEModel('models/DPR/bge-large/bge.onnx')
+        elif model_name=='keyword':
+            model = Word2VecModel('models/tencent_word2vec/tencent-ailab-embedding-zh-d100-v0.2.0-s')
+        return model
+    except _EmbeddingLoadTimeout:
+        raise
+    except Exception as e:
+        raise
+    finally:
+        if using_timeout[0] and hasattr(signal, 'SIGALRM'):
+            signal.alarm(0)  # Cancel alarm
+            signal.signal(signal.SIGALRM, old_handler)
     

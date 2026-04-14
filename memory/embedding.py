@@ -37,6 +37,8 @@ class EmbeddingManager(BaseModel):
             self.embedding_model = get_embedding_model()
             self._available = True
         except Exception:
+            # Catches all failures including _EmbeddingLoadTimeout, network errors,
+            # missing files, etc. Sets _available=False so embed() degrades gracefully.
             self.embedding_model = None
             self._available = False
 
