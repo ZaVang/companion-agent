@@ -7,15 +7,29 @@ import logging
 from logging.handlers import RotatingFileHandler
 from fastapi import FastAPI, APIRouter, BackgroundTasks, Depends
 import uvicorn
-import gradio as gr 
+
+# Optional: Gradio UI
+try:
+    import gradio as gr
+    GRADIO_AVAILABLE = True
+except ImportError:
+    GRADIO_AVAILABLE = False
 
 from utils.message import ChatMessage
 from utils.schema import TextContent
 from service.payload import *
 
 from agent.brain import MasterBrain
-from service.webui import webui
 from service.memory_api import router as memory_router
+
+# Optional: WebUI
+if GRADIO_AVAILABLE:
+    try:
+        from service.webui import webui
+    except ImportError:
+        webui = None
+else:
+    webui = None
 
 #设置根日志记录器
 root_logger = logging.getLogger()
@@ -97,8 +111,11 @@ async def chatSync(req: ChatEventRequest):
     store.update_chat(chat=chat)
     return response
 
-ui = webui()
-app = gr.mount_gradio_app(app, ui, path="/ai-companion/api/gradio")
+# Mount Gradio UI if available
+if GRADIO_AVAILABLE and webui is not None:
+    ui = webui()
+    app = gr.mount_gradio_app(app, ui, path="/ai-companion/api/gradio")
+
 app.include_router(router, prefix="/ai-companion")
 app.include_router(memory_router, prefix="/ai-companion/api")
 

@@ -12,7 +12,7 @@ import uuid
 
 from memory.system import MemorySystem, MemorySystemConfig, DMNResult
 from memory.neuron import NeuronCell
-from memory.enums import EventType
+from memory.api_schema import EventType
 
 router = APIRouter(prefix="/memory", tags=["memory"])
 
