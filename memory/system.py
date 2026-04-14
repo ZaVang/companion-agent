@@ -47,6 +47,9 @@ from memory.optimization import MemoryIndex, BatchProcessor, BatchConfig
 # 核心类
 from memory.neuron import NeuronCell
 from memory.engram import Engram
+from memory.unified_retriever import UnifiedRetriever, RetrievalConfig, RetrievalResult
+from memory.embedding import EmbeddingManager
+from memory.event import EventStream
 
 
 # ============== 配置类 ==============
@@ -86,6 +89,7 @@ class MemorySystemConfig(BaseModel):
     auto_decay: bool = True          # 自动衰减
     auto_consolidation: bool = True  # 自动固化
     auto_dynamics: bool = True       # 自动动态管理
+    max_neurons: Optional[int] = None  # 神经元容量上限，None=无限制
 
 
 class DMNResult(BaseModel):
@@ -115,9 +119,13 @@ class MemorySystem:
     整合所有 Sprint 功能，提供统一接口。
     """
     
-    def __init__(self, config: Optional[MemorySystemConfig] = None):
+    def __init__(
+        self,
+        config: Optional[MemorySystemConfig] = None,
+        episodic_memory: Optional['EpisodicMemory'] = None,
+    ):
         self.config = config or MemorySystemConfig()
-        
+
         # 核心模块（Sprint 1-7）
         self.elo = EloCompetition(self.config.elo_config)
         self.decay = DecayScheduler(self.config.decay_config)
@@ -126,25 +134,99 @@ class MemorySystem:
         self.causal = CausalInference(self.config.causal_config)
         self.scene = SceneAwareRetrieval() if self.config.enable_scene else None
         self.resonance = ResonanceEngine(self.config.resonance_config)
-        
+
         # Sprint 8: 动态管理
         self.dynamics = NeuronDynamics(
             death_criteria=self.config.death_criteria,
             birth_criteria=self.config.birth_criteria
         )
-        
+
         # Sprint 9: 可视化与追踪
         self.history = MemoryHistory()
         self.tracer = MemoryTracer(self.history)
-        
+
         # Sprint 10: 优化
         self.index = MemoryIndex() if self.config.enable_index else None
         self.batch = BatchProcessor(self.config.batch_config)
-        
+
+        # 核心依赖：Embedding + EventStream + 统一检索器
+        self._embedding_manager: Optional[EmbeddingManager] = None
+        self._event_stream: Optional[EventStream] = None
+        self._unified_retriever: Optional[UnifiedRetriever] = None
+
+        # LTM 注入：支持直接传入（优雅）或后期 attach（向后兼容）
+        self._episodic_memory: Optional['EpisodicMemory'] = episodic_memory
+
         # 内部状态
         self._neurons: Dict[str, NeuronCell] = {}
         self._engrams: Dict[str, Engram] = {}
         self._initialized = True
+    
+    def attach_episodic_memory(self, episodic_memory: 'EpisodicMemory') -> None:
+        """注入 EpisodicMemory 实例，使 retrieve() 能从 LTM 召回"""
+        self._episodic_memory = episodic_memory
+
+    def _evict_weak_neurons(self) -> int:
+        """
+        LRU-style 容量上限 eviction。
+
+        当 self._neurons 超出 max_neurons 时，
+        按 strength 从低到高排序，删除最弱的神经元直到回到容量以内。
+
+        Returns:
+            被驱逐的神经元数量。
+        """
+        max_cap = self.config.max_neurons
+        if max_cap is None:
+            return 0
+
+        current_count = len(self._neurons)
+        if current_count <= max_cap:
+            return 0
+
+        excess = current_count - max_cap
+        # 按 strength 升序排列，最弱的在前面
+        sorted_neurons = sorted(
+            self._neurons.items(),
+            key=lambda item: item[1].strength
+        )
+
+        evicted = 0
+        for neuron_id, neuron in sorted_neurons:
+            if evicted >= excess:
+                break
+            self._neurons.pop(neuron_id, None)
+            if self.index:
+                self.index.remove_neuron(neuron_id)
+            evicted += 1
+
+        return evicted
+    
+    @property
+    def embedding_manager(self) -> EmbeddingManager:
+        """延迟初始化 EmbeddingManager"""
+        if self._embedding_manager is None:
+            self._embedding_manager = EmbeddingManager()
+        return self._embedding_manager
+    
+    @property
+    def event_stream(self) -> EventStream:
+        """延迟初始化 EventStream"""
+        if self._event_stream is None:
+            self._event_stream = EventStream()
+        return self._event_stream
+    
+    @property
+    def unified_retriever(self) -> UnifiedRetriever:
+        """延迟初始化统一检索器"""
+        if self._unified_retriever is None:
+            self._unified_retriever = UnifiedRetriever(
+                retrieval_config=RetrievalConfig(),
+                elo_competitor=self.elo,
+                decay_scheduler=self.decay,
+                scene_retrieval=self.scene
+            )
+        return self._unified_retriever
     
     # ============== 核心操作 ==============
     
@@ -239,6 +321,20 @@ class MemorySystem:
         
         # 存储神经元
         self._neurons[str(neuron.event_id)] = neuron
+
+        # LRU-style 容量上限 eviction：超出时删除最弱的神经元
+        if self.config.max_neurons is not None:
+            self._evict_weak_neurons()
+        
+        # 生成并存储语义 embedding（关键修复：语义检索的前提）
+        try:
+            embedding = self.embedding_manager.embed(content)
+            self.embedding_manager.add_embeddings({neuron.event_id: embedding})
+        except Exception:
+            pass  # embedding 生成失败不影响记忆存储
+        
+        # 将事件写入 EventStream（供 UnifiedRetriever 获取内容）
+        self.event_stream.add_event(neuron)
         
         return neuron
     
@@ -270,33 +366,77 @@ class MemorySystem:
         if event_types:
             candidates = [n for n in candidates if n.event_type in event_types]
         
-        # 场景过滤
+        # 场景过滤（提前裁剪候选集，减少后续计算量）
         if self.scene and scene:
-            scene_neurons = self.scene.get_neurons_for_scene(scene)
-            neuron_ids = {str(n.event_id) for n in candidates}
-            common = neuron_ids & scene_neurons
+            scene_neuron_ids = self.scene.get_neurons_for_scene(scene)
+            neuron_ids_set = {str(n.event_id) for n in candidates}
+            common = neuron_ids_set & scene_neuron_ids
             candidates = [n for n in candidates if str(n.event_id) in common]
         
-        # 简单评分（实际应使用 embedding）
-        scores = []
+        if not candidates:
+            return []
+        
+        # 关键修复：使用 UnifiedRetriever 进行语义检索
+        try:
+            query_embedding = self.embedding_manager.embed(query)
+            
+            results = self.unified_retriever.retrieve(
+                neurons=candidates,
+                query_embedding=query_embedding,
+                embedding_manager=self.embedding_manager,
+                event_stream=self.event_stream,
+                current_scene=scene
+            )
+            
+            # 通过 event_id 找到 NeuronCell 对象
+            retrieved_ids = [r.event_id for r in results]
+            neuron_map = {str(n.event_id): n for n in candidates}
+            retrieved = [neuron_map[str(rid)] for rid in retrieved_ids if str(rid) in neuron_map]
+            
+            if retrieved:
+                return retrieved[:top_k]
+        except Exception:
+            pass  # 降级到词重叠检索
+        
+        # 降级：词重叠检索（无 embedding 或检索失败时）
         query_words = set(query.lower().split())
+        scores = []
         for neuron in candidates:
-            # 获取关联事件内容作为评分依据
-            neuron_words = set()
-            # 简化：使用 event_type 作为特征
-            neuron_words.add(neuron.event_type)
+            # 从 event_stream 拿真实内容做匹配
+            try:
+                event = self.event_stream.get_event(neuron.event_id)
+                content_words = set(event.content.lower().split())
+            except Exception:
+                content_words = set(neuron.event_type.lower().split())
             
-            overlap = len(query_words & neuron_words)
+            overlap = len(query_words & content_words)
             score = overlap / max(len(query_words), 1) if query_words else 0
-            
-            # 考虑强度
             score *= neuron.strength
-            
             scores.append((neuron, score))
         
-        # 排序
         scores.sort(key=lambda x: x[1], reverse=True)
-        return [n for n, _ in scores[:top_k]]
+        stm_results = [n for n, _ in scores[:top_k]]
+        
+        # 🔑 关键修复：STM 结果不足时，自动从 LTM 召回
+        if len(stm_results) < top_k:
+            try:
+                query_emb = self.embedding_manager.embed(query)
+                ltm_results = self._episodic_memory.retrieve_from_engrams(
+                    query_embedding=query_emb,
+                    embedding_manager=self.embedding_manager,
+                    event_stream=self.event_stream,
+                    top_k=top_k - len(stm_results),
+                    event_types=event_types,
+                )
+                # 过滤掉已经在 STM 结果中的
+                stm_ids = {str(n.event_id) for n in stm_results}
+                for neuron in ltm_results:
+                    if str(neuron.event_id) not in stm_ids:
+                        stm_results.append(neuron)
+            except Exception:
+                pass
+        
+        return stm_results[:top_k]
     
     def apply_decay(self, reference_time: datetime = None) -> int:
         """

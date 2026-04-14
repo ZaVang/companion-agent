@@ -1,11 +1,13 @@
-from typing import List, Dict, Optional, Union
+from typing import List, Dict, Optional, Set, Union, TYPE_CHECKING
 from pydantic import BaseModel, Field, UUID1
 from pathlib import Path
 from datetime import datetime
+import numpy as np
 
 from memory.event import Events
 from memory.neuron import NeuronCell
 from memory.engram import Engram, RegistryMetadata, EngramManager
+from memory.unified_retriever import UnifiedRetriever, RetrievalConfig
 from utils.path import REGISTRY_DB_DIR, SHORT_TERM_MEMORY_DB_DIR
 from utils.common import MAX_TURNS
 
@@ -86,6 +88,7 @@ class EpisodicMemory(BaseModel):
     """
     registry: Dict[str, Dict[UUID1, RegistryMetadata]] = Field(default_factory=dict)
     engram_managers: Dict[str, EngramManager] = Field(default_factory=dict)
+    max_engrams_per_audience: Optional[int] = None  # None = unlimited
     
     def is_empty(self) -> bool:
         """Checks if there are any engrams across all audiences."""
@@ -95,10 +98,54 @@ class EpisodicMemory(BaseModel):
         """Incorporates a given engram into episodic memory for a specific audience."""
         if audience not in self.registry:
             self.registry[audience] = {}
+        if audience not in self.engram_managers:
+            self.engram_managers[audience] = EngramManager()
         if engram.uuid not in self.registry[audience]:
             self.add_to_registry(audience, engram)
+        # Evict weakest engrams if capacity is set and exceeded
+        if self.max_engrams_per_audience is not None:
+            self._evict_weak_engrams(audience)
         # Now adding engram under a specific audience
-        self.engram_managers[audience].add_engram(engram.uuid, engram)
+        self.engram_managers[audience].add_engram(engram)
+    
+    def _evict_weak_engrams(self, audience: str) -> int:
+        """
+        Evict the weakest engrams when capacity is exceeded.
+        
+        Removes engrams with the lowest strength until capacity is satisfied.
+        
+        Returns:
+            Number of engrams evicted.
+        """
+        max_cap = self.max_engrams_per_audience
+        if max_cap is None:
+            return 0
+        
+        manager = self.engram_managers.get(audience)
+        reg = self.registry.get(audience, {})
+        if manager is None or not reg:
+            return 0
+        
+        current_count = len(manager.engram_dict)
+        if current_count <= max_cap:
+            return 0
+        
+        # Sort engrams by strength (ascending), evict weakest first
+        sorted_engrams = sorted(
+            reg.items(),
+            key=lambda item: item[1].strength
+        )
+        
+        excess = current_count - max_cap
+        evicted = 0
+        for engram_id, metadata in sorted_engrams:
+            if evicted >= excess:
+                break
+            manager.remove_engram(engram_id)
+            reg.pop(engram_id, None)
+            evicted += 1
+        
+        return evicted
         
     def add_to_registry(self, audience:str, engram: Engram) -> None:
         """
@@ -126,6 +173,82 @@ class EpisodicMemory(BaseModel):
             if engram is not None:
                 return engram
         return None
+
+    def retrieve_from_engrams(
+        self,
+        query_embedding: np.ndarray,
+        embedding_manager,
+        event_stream,
+        top_k: int = 10,
+        audience: Optional[str] = None,
+        event_types: Optional[List[str]] = None,
+    ) -> List[NeuronCell]:
+        """
+        从所有 Engram 中检索匹配的 NeuronCell（关键修复：让 LTM 记忆可被语义检索召回）
+        
+        Args:
+            query_embedding: 查询向量
+            embedding_manager: EmbeddingManager（有 calculate_similarities 方法）
+            event_stream: EventStream（有 get_event 方法）
+            top_k: 返回数量
+            audience: 可选，按受众过滤
+            event_types: 可选，按事件类型过滤
+        
+        Returns:
+            按评分排序的 NeuronCell 列表
+        """
+        # 1. 收集所有 engram 中的神经元
+        all_neurons: List[NeuronCell] = []
+        audiences_to_check = [audience] if audience else list(self.engram_managers.keys())
+        
+        for aud in audiences_to_check:
+            if aud not in self.engram_managers:
+                continue
+            manager = self.engram_managers[aud]
+            
+            # 确保相关 engram 已加载
+            if aud in self.registry:
+                for uuid, meta in self.registry[aud].items():
+                    if uuid not in manager.engram_dict:
+                        try:
+                            self.load_partial_engram(aud, uuid)
+                        except Exception:
+                            pass
+            
+            # 提取神经元
+            for engram in manager.engram_dict.values():
+                for neuron in engram.get_all_neurons():
+                    if event_types and neuron.event_type not in event_types:
+                        continue
+                    all_neurons.append(neuron)
+        
+        if not all_neurons:
+            return []
+        
+        # 2. 使用 UnifiedRetriever 评分
+        try:
+            retriever = UnifiedRetriever(
+                retrieval_config=RetrievalConfig(top_k=top_k),
+            )
+            
+            results = retriever.retrieve(
+                neurons=all_neurons,
+                query_embedding=query_embedding,
+                embedding_manager=embedding_manager,
+                event_stream=event_stream,
+            )
+            
+            # 3. 通过 event_id 映射回 NeuronCell
+            neuron_map = {str(n.event_id): n for n in all_neurons}
+            retrieved = []
+            for r in results:
+                nid = str(r.event_id)
+                if nid in neuron_map:
+                    retrieved.append(neuron_map[nid])
+            
+            return retrieved[:top_k]
+        except Exception:
+            return []
 
     def forget_engram_by_id(self, engram_id: UUID1) -> None:
         """Removes an engram from episodic memory based on its unique identifier."""
@@ -184,7 +307,7 @@ class EpisodicMemory(BaseModel):
     
     def initialize_engram(self, partial: bool = False) -> None:
         for audience, registry in self.registry.items():
-            for uuid, metadata in registry:
+            for uuid, metadata in registry.items():
                 if partial or metadata.scope == 'full':  # 当partial为True时，加载所有engram，否则只加载scope为'full'的engram
                     engram = Engram.from_json(str(uuid), scope=metadata.scope)
                     self.engram_managers[audience].add_engram(engram)

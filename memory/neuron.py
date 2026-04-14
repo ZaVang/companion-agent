@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 from utils.common import DEFAULT_AREA
 from utils.schema import DateTime
 from memory.event import EventStream
+from memory.decay import DecayScheduler
 
 
 class Connection(BaseModel):
@@ -97,33 +98,25 @@ class NeuronCell(BaseModel):
     
     def apply_decay(self, reference_time: Optional[datetime] = None) -> float:
         """
-        应用衰减，更新 strength
-        
+        应用衰减，更新 strength。
+
+        实现委托给 DecayScheduler.apply_decay_to_neuron()，
+        确保衰减计算只有单一数据源。
+
         Args:
             reference_time: 参考时间，默认为当前时间
-        
+
         Returns:
             衰减后的新 strength
         """
-        if reference_time is None:
-            reference_time = datetime.now()
-        
-        # 计算时间差（天）
-        if self.last_decay_at:
-            if isinstance(self.last_decay_at, str):
-                last_time = datetime.strptime(self.last_decay_at, '%Y-%m-%d %H:%M:%S')
-            else:
-                last_time = self.last_decay_at
-            time_days = (reference_time - last_time).total_seconds() / (24 * 3600)
-        else:
-            time_days = 0.0
-        
-        # 应用衰减公式: strength = strength * decay_rate^time_days
-        self.strength *= (self.decay_rate ** time_days)
-        
-        # 更新上次衰减时间
-        self.last_decay_at = reference_time
-        
+        new_strength = DecayScheduler().apply_decay_to_neuron(
+            decay_rate=self.decay_rate,
+            current_strength=self.strength,
+            last_decay_at=self.last_decay_at,
+            reference_time=reference_time,
+        )
+        self.strength = new_strength
+        self.last_decay_at = reference_time or datetime.now()
         return self.strength
     
     def boost_strength(self, factor: float = 1.1) -> float:

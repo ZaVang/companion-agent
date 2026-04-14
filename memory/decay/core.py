@@ -246,33 +246,42 @@ class DecayScheduler:
     
     def apply_decay_to_neuron(
         self,
-        neuron_id: str,
+        decay_rate: float,
         current_strength: float,
+        last_decay_at: Optional[datetime] = None,
         reference_time: Optional[datetime] = None
     ) -> float:
         """
-        对单个神经元应用衰减
-        
+        对单个神经元应用衰减（单一数据源原则）。
+
+        计算 strength * decay_rate^days，其中 days = reference_time - last_decay_at。
+
         Args:
-            neuron_id: 神经元 ID
+            decay_rate:    神经元的衰减率 (0 < rate <= 1)
             current_strength: 当前强度
-            reference_time: 参考时间
-        
+            last_decay_at: 上次衰减时间（None 表示从未衰减过）
+            reference_time: 参考时间（默认为当前时间）
+
         Returns:
-            衰减后的新强度
+            衰减后的新 strength
         """
         if reference_time is None:
             reference_time = utc_now()
-        
-        # 计算时间因子（使用配置的默认衰减率）
-        # 如果需要更精确的计算，可以使用存储的 decay_rate
-        base_decay_rate = self.config.base_decay_rates.get('default', 0.995)
-        
-        # 简化计算：使用默认衰减率
-        # 在实际应用中，应该根据神经元类型获取对应的衰减率
-        decay_factor = base_decay_rate ** 1.0  # 默认 1 天
-        
-        return current_strength * decay_factor
+        reference_time = from_naive(reference_time)
+
+        # 计算时间差（天）
+        if last_decay_at is not None:
+            if isinstance(last_decay_at, str):
+                last_time = datetime.strptime(last_decay_at, '%Y-%m-%d %H:%M:%S')
+            else:
+                last_time = last_decay_at
+            last_time = from_naive(last_time)
+            time_days = (reference_time - last_time).total_seconds() / (24 * 3600)
+        else:
+            time_days = 0.0
+
+        # 应用衰减公式: strength = strength * decay_rate^days
+        return current_strength * (decay_rate ** time_days)
 
 
 # ============== 全局调度器 ==============

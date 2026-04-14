@@ -5,7 +5,7 @@ Elo 核心算法
 """
 
 import math
-from typing import Dict, List, Optional, Tuple, Tuple
+from typing import Dict, List, Optional, Tuple
 import uuid
 
 from memory.schemas import (

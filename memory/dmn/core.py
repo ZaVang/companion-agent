@@ -253,29 +253,53 @@ class DMNMode:
         self,
         ltm: 'EpisodicMemory'
     ):
-        """运行 reflection"""
-        # 获取 engrams
+        """运行 reflection。
+
+        调用链：
+          1. _collect_all_engrams()  → 收集所有 engram
+          2. reflection_trigger.check_triggers()  → 评估触发条件
+          3. reflection_executor.execute()        → 执行 reflection
+
+        如果没有触发条件则静默返回（不算错误）。
+        """
+        # 收集 engrams 和神经元
         engrams = []
         recent_neurons = []
         for manager in ltm.engram_managers.values():
             engrams.extend(list(manager.engram_dict.values()))
-            for e in engrams:
-                recent_neurons.extend(list(e.get_all_neurons()))
-        
+            for engram in manager.engram_dict.values():
+                recent_neurons.extend(list(engram.get_all_neurons()))
+
         if not engrams:
             return None
-        
+
+        # 限制神经元数量，避免过大计算
+        recent_neurons = recent_neurons[:100]
+
+        # 使用默认相似度函数（基于 engram strength）
+        def default_similarity_fn(e1: 'Engram', e2: 'Engram') -> float:
+            # 简单相似度：两个 engram 的强度越接近，相似度越高
+            # 范围 [0, 1]
+            diff = abs(e1.strength - e2.strength)
+            return max(0.0, 1.0 - diff)
+
+        # Step 1: 评估触发条件
         triggers = self.reflection_trigger.check_triggers(
             engrams=engrams,
-            recent_neurons=recent_neurons[:100]  # 限制神经元数量
+            recent_neurons=recent_neurons,
+            similarity_fn=default_similarity_fn,
         )
-        
-        if triggers:
-            return self.reflection_executor.execute(
-                triggers=triggers,
-                engrams=engrams
-            )
-        return None
+
+        if not triggers:
+            # 没有触发条件，不执行 reflection
+            return None
+
+        # Step 2: 执行 reflection（将 ltm 作为 memory_manager 传入）
+        return self.reflection_executor.execute(
+            triggers=triggers,
+            engrams=engrams,
+            memory_manager=ltm,
+        )
     
     @property
     def last_result(self) -> Optional[DMNResult]:

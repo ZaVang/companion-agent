@@ -160,9 +160,9 @@ class EventStream(BaseModel):
         Returns:
             EventStream: A new EventStream instance containing events that match all conditions.
         """
-        ac = partial(self.actor_condition(actor=actor))
-        tc = partial(self.actor_condition(time=time))
-        auc = partial(self.actor_condition(audience=audience))
+        ac = partial(self.actor_condition, actor=actor)
+        tc = partial(self.timestamp_condition, time=time, ge=ge)
+        auc = partial(self.audience_condition, audience=audience)
         return self.filter(ac, tc, auc)
     
     def delete_events_from_stream(self, other_stream: 'EventStream') -> None:
