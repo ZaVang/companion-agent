@@ -92,7 +92,7 @@ export const NeuronNodeDetail: React.FC<NeuronNodeDetailProps> = ({
             <div className="bg-dark-bg rounded-lg p-3">
               <p className="text-xs text-gray-500">Activation Threshold</p>
               <p className="text-lg font-semibold">
-                {(neuron.activation_threshold ?? 0.3) * 100.toFixed(0)}%
+                {((neuron.activation_threshold ?? 0.3) * 100).toFixed(0)}%
               </p>
             </div>
             <div className="bg-dark-bg rounded-lg p-3">
@@ -112,7 +112,7 @@ export const NeuronNodeDetail: React.FC<NeuronNodeDetailProps> = ({
                 <span className="text-sm">{getEmotionLabel(neuron.emotional_valence)}</span>
               </div>
               <div className="mt-2 flex items-center gap-2 text-xs text-gray-500">
-                <span>Arousal: {(neuron.emotional_arousal ?? 0.5) * 100.toFixed(0)}%</span>
+                <span>Arousal: {((neuron.emotional_arousal ?? 0.5) * 100).toFixed(0)}%</span>
               </div>
             </div>
           )}
