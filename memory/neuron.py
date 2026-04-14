@@ -116,10 +116,12 @@ class NeuronCell(BaseModel):
         Returns:
             衰减后的新 strength
         """
+        # 修复：首次衰减时 None 应视为 creation_time（从创建时开始算衰减）
+        effective_last_decay = self.last_decay_at if self.last_decay_at is not None else self.create_time
         new_strength = DecayScheduler().apply_decay_to_neuron(
             decay_rate=self.decay_rate,
             current_strength=self.strength,
-            last_decay_at=self.last_decay_at,
+            last_decay_at=effective_last_decay,
             reference_time=reference_time,
         )
         self.strength = new_strength

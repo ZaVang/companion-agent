@@ -1,3 +1,5 @@
+# DEPRECATED: 此文件已废弃，新入口是 run_server.py
+# 本文件保留用于向后兼容，后续版本将删除
 import os
 import json
 import argparse

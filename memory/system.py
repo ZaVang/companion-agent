@@ -206,6 +206,11 @@ class MemorySystem:
         return evicted
     
     @property
+    def decay_scheduler(self) -> DecayScheduler:
+        """decay 的别名 property，确保向后兼容"""
+        return self.decay
+    
+    @property
     def embedding_manager(self) -> EmbeddingManager:
         """延迟初始化 EmbeddingManager"""
         if self._embedding_manager is None:
@@ -312,7 +317,7 @@ class MemorySystem:
         # Sprint 6: 共振分析 - 计算新神经元的激活能量
         resonance_data: Optional[Dict] = None
         try:
-            elo_state = self.elo.get_neuron_state(str(neuron.event_id))
+            elo_state = self.elo.get_state(str(neuron.event_id))
             elo_value = elo_state.elo if elo_state else 1000.0
         except Exception:
             elo_value = 1000.0
@@ -523,7 +528,7 @@ class MemorySystem:
             neurons_to_check = [
                 {
                     'id': neuron_id,
-                    'elo': self.elo.get_neuron_state(neuron_id).elo if hasattr(self.elo, 'get_neuron_state') else 1000,
+                    'elo': self.elo.get_state(neuron_id).elo if hasattr(self.elo, 'get_state') else 1000,
                     'strength': neuron.strength,
                     'last_activation': None,
                     'connections_count': len(neuron.outgoing_connections)
@@ -599,16 +604,16 @@ class MemorySystem:
         }
         
         # 评估死亡
-        neurons_data = [
-            {
+        neurons_data = []
+        for neuron_id, neuron in self._neurons.items():
+            elo_state = self.elo.get_state(neuron_id)
+            neurons_data.append({
                 'id': neuron_id,
-                'elo': self.elo.get_neuron_state(neuron_id).elo if hasattr(self.elo, 'get_neuron_state') else 1000,
+                'elo': elo_state.elo if elo_state else 1000,
                 'strength': neuron.strength,
                 'last_activation': None,
                 'connections_count': len(neuron.outgoing_connections)
-            }
-            for neuron_id, neuron in self._neurons.items()
-        ]
+            })
         
         death_results = self.dynamics.death_manager.batch_evaluate(neurons_data)
         for neuron_id, should_die, reason, record in death_results:

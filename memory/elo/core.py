@@ -114,17 +114,23 @@ class EloCompetition:
         self._states: Dict[str, NeuronEloState] = {}
     
     def register_neuron(self, neuron_id: str) -> NeuronEloState:
-        """注册神经元"""
-        if neuron_id not in self._states:
-            self._states[neuron_id] = NeuronEloState(
-                event_id=uuid.uuid4(),
+        """注册神经元（统一使用字符串作为 key，event_id 与 key 保持一致）"""
+        key = str(neuron_id)
+        if key not in self._states:
+            # 尝试将 key 转为 UUID，如果失败则生成一个新的
+            try:
+                event_id = uuid.UUID(key)
+            except (ValueError, AttributeError):
+                event_id = uuid.uuid4()
+            self._states[key] = NeuronEloState(
+                event_id=event_id,
                 elo=self.config.initial_elo
             )
-        return self._states[neuron_id]
+        return self._states[key]
     
     def get_state(self, neuron_id: str) -> Optional[NeuronEloState]:
-        """获取神经元状态"""
-        return self._states.get(neuron_id)
+        """获取神经元状态（统一使用字符串作为 key）"""
+        return self._states.get(str(neuron_id))
     
     def battle(
         self, 
