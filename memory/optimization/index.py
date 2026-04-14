@@ -437,7 +437,47 @@ class MemoryIndex:
         # 排序并返回
         scores.sort(key=lambda x: x[1], reverse=True)
         return scores[:top_k]
-    
+
+    def search_by_text(self, query: str, top_k: int = 10) -> List[Tuple[str, float]]:
+        """
+        文本关键词搜索
+
+        基于存储的 metadata.event_type 和 tag 文本进行匹配。
+        用于验收命令: ms.index.search_by_text("关键词")
+
+        Args:
+            query: 搜索关键词
+            top_k: 返回最多 top_k 个结果
+
+        Returns:
+            List[(neuron_id, score)] 按 score 降序排列
+        """
+        if not query:
+            return []
+
+        query_lower = query.lower()
+        results = []
+
+        for neuron_id, meta in self._metadata.items():
+            score = 0.0
+
+            # 匹配 event_type
+            event_type = meta.get('event_type', '')
+            if query_lower in event_type.lower():
+                score = 1.0
+
+            # 匹配 tags（标签搜索）
+            tags = self.tag.get_tags(neuron_id)
+            for tag in tags:
+                if query_lower in tag.lower():
+                    score = max(score, 0.8)
+
+            if score > 0:
+                results.append((neuron_id, score))
+
+        results.sort(key=lambda x: x[1], reverse=True)
+        return results[:top_k]
+
     def get_statistics(self) -> Dict:
         """获取索引统计"""
         return {

@@ -115,30 +115,39 @@ class BatchProcessor:
         if reference_time is None:
             reference_time = utc_now()
         
-        # 过滤低强度神经元
+        # 过滤低强度神经元（支持 dict 和对象）
         if self.config.skip_low_strength:
             original_count = len(neurons)
-            neurons = [
-                n for n in neurons
-                if getattr(n, 'strength', 0) >= self.config.low_strength_threshold
-            ]
+            filtered = []
+            for n in neurons:
+                if isinstance(n, dict):
+                    s = n.get('strength', 0)
+                else:
+                    s = getattr(n, 'strength', 0)
+                if s >= self.config.low_strength_threshold:
+                    filtered.append(n)
+            neurons = filtered
             result.skipped_count = original_count - len(neurons)
-        
+
         for neuron in neurons:
             try:
-                old_strength = getattr(neuron, 'strength', 0)
-                new_strength = decay_func(neuron, reference_time)
-                
-                if hasattr(neuron, 'strength'):
-                    neuron.strength = new_strength
-                
+                if isinstance(neuron, dict):
+                    old_strength = neuron.get('strength', 0)
+                    new_strength = decay_func(neuron, reference_time)
+                    neuron['strength'] = new_strength
+                else:
+                    old_strength = getattr(neuron, 'strength', 0)
+                    new_strength = decay_func(neuron, reference_time)
+                    if hasattr(neuron, 'strength'):
+                        neuron.strength = new_strength
+
                 result.add_success({
-                    'neuron_id': getattr(neuron, 'event_id', 'unknown'),
+                    'neuron_id': getattr(neuron, 'event_id', neuron.get('id', 'unknown')),
                     'old_strength': old_strength,
                     'new_strength': new_strength
                 })
             except Exception as e:
-                result.add_failure(e, {'neuron_id': getattr(neuron, 'event_id', 'unknown')})
+                result.add_failure(e, {'neuron_id': getattr(neuron, 'event_id', neuron.get('id', 'unknown'))})
         
         result.total_time_ms = (time.time() - start_time) * 1000
         return result
@@ -344,13 +353,21 @@ def batch_activate(
 
 def batch_decay(
     neurons: List[Any],
-    decay_func: Callable[[Any, datetime], float],
+    decay_func: Callable[[Any, datetime], float] = None,
     reference_time: datetime = None,
     config: Optional[BatchConfig] = None
 ) -> BatchResult:
     """
     便捷函数：批量衰减
+
+    如果不提供 decay_func，使用默认实现：
+    对支持 strength/decay_rate 属性的对象进行指数衰减。
     """
+    if decay_func is None:
+        def decay_func(neuron: Any, _ref_time: datetime) -> float:
+            strength = getattr(neuron, 'strength', 1.0)
+            decay_rate = getattr(neuron, 'decay_rate', 0.995)
+            return strength * decay_rate
     processor = BatchProcessor(config)
     return processor.batch_apply_decay(neurons, decay_func, reference_time)
 

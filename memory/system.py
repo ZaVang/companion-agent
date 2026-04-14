@@ -144,6 +144,7 @@ class MemorySystem:
         # Sprint 9: 可视化与追踪
         self.history = MemoryHistory()
         self.tracer = MemoryTracer(self.history)
+        self.visualizer = NetworkVisualizer()
 
         # Sprint 10: 优化
         self.index = MemoryIndex() if self.config.enable_index else None
@@ -599,6 +600,138 @@ class MemorySystem:
         
         return stats
     
+    def batch_retrieve(
+        self,
+        query: str,
+        top_k: int = 10,
+        event_types: List[str] = None
+    ) -> List[Dict]:
+        """
+        使用索引加速的批量检索。
+
+        优先使用 search_by_text（无需 embedding），其次尝试向量搜索，
+        最后降级到 UnifiedRetriever。
+
+        Args:
+            query: 查询文本
+            top_k: 返回数量
+            event_types: 事件类型过滤
+
+        Returns:
+            List[{'neuron_id': str, 'score': float}]
+        """
+        if not self._neurons:
+            return []
+
+        try:
+            candidates = list(self._neurons.values())
+
+            if event_types:
+                candidates = [n for n in candidates if n.event_type in event_types]
+
+            neuron_map = {str(n.event_id): n for n in candidates}
+
+            # 路径1: search_by_text（最快，无需 embedding）
+            if self.index:
+                text_results = self.index.search_by_text(query, top_k=top_k)
+                if text_results:
+                    retrieved = []
+                    for neuron_id, score in text_results:
+                        if neuron_id in neuron_map:
+                            retrieved.append({
+                                'neuron_id': neuron_id,
+                                'score': score,
+                                'neuron': neuron_map[neuron_id]
+                            })
+                    return retrieved
+
+            # 路径2: 向量搜索（需要 embedding）
+            try:
+                query_embedding = self.embedding_manager.embed(query)
+
+                if self.index:
+                    results = self.index.search(
+                        query=query_embedding,
+                        tags=event_types,
+                        top_k=top_k * 2
+                    )
+                    retrieved = []
+                    for neuron_id, score in results:
+                        if neuron_id in neuron_map:
+                            retrieved.append({
+                                'neuron_id': neuron_id,
+                                'score': score,
+                                'neuron': neuron_map[neuron_id]
+                            })
+                    return retrieved[:top_k]
+                else:
+                    from memory.unified_retriever import UnifiedRetriever, RetrievalConfig
+                    retriever = UnifiedRetriever(
+                        RetrievalConfig(),
+                        self.elo,
+                        self.decay,
+                        self.scene
+                    )
+                    results = retriever.retrieve(
+                        neurons=candidates,
+                        query_embedding=query_embedding,
+                        embedding_manager=self.embedding_manager,
+                        event_stream=self.event_stream,
+                        current_scene=None
+                    )
+                    return [{'neuron_id': str(r.event_id), 'score': r.final_score} for r in results[:top_k]]
+            except Exception:
+                # embedding 失败，降级到空
+                return []
+
+        except Exception:
+            return []
+
+    def batch_decay(
+        self,
+        reference_time: datetime = None,
+        neurons: List[NeuronCell] = None
+    ) -> Dict:
+        """
+        批量对神经元应用衰减（使用 BatchProcessor）。
+
+        Args:
+            reference_time: 参考时间
+            neurons: 要衰减的神经元列表，None=所有
+
+        Returns:
+            {'applied': int, 'skipped': int, 'total_time_ms': float}
+        """
+        import time
+        start = time.time()
+
+        if neurons is None:
+            neurons = list(self._neurons.values())
+
+        if reference_time is None:
+            reference_time = utc_now()
+
+        applied = 0
+        skipped = 0
+
+        for neuron in neurons:
+            try:
+                old = neuron.strength
+                neuron.apply_decay(reference_time)
+                if neuron.strength < old:
+                    applied += 1
+                else:
+                    skipped += 1
+            except Exception:
+                skipped += 1
+
+        elapsed_ms = (time.time() - start) * 1000
+        return {
+            'applied': applied,
+            'skipped': skipped,
+            'total_time_ms': elapsed_ms
+        }
+
     # ============== 统计和调试 ==============
     
     def get_statistics(self) -> Dict:
@@ -624,6 +757,47 @@ class MemorySystem:
             'index': self.index.get_statistics() if self.index else None
         }
     
+    def to_graphviz(self) -> str:
+        """
+        导出记忆网络为 Graphviz DOT 格式字符串。
+
+        Returns:
+            DOT 格式字符串（包含 "digraph" 关键字）
+        """
+        neurons = list(self._neurons.values())
+        connections = [
+            (str(n.event_id), str(c.target_id))
+            for n in neurons
+            for c in n.outgoing_connections
+        ]
+        self.visualizer.build_from_neurons(neurons, connections)
+        return self.visualizer.render_graphviz()
+
+    def get_network_stats(self) -> Dict:
+        """
+        获取记忆网络的统计信息。
+
+        Returns:
+            dict 包含 node_count, edge_count, avg_degree 等
+        """
+        neurons = list(self._neurons.values())
+        connections = [
+            (str(n.event_id), str(c.target_id))
+            for n in neurons
+            for c in n.outgoing_connections
+        ]
+        self.visualizer.build_from_neurons(neurons, connections)
+        stats = self.visualizer.get_statistics()
+        return {
+            'node_count': stats.total_neurons,
+            'edge_count': stats.total_connections,
+            'avg_degree': stats.avg_connections_per_neuron,
+            'density': stats.density,
+            'isolated_nodes': stats.isolated_neurons,
+            'neurons_by_type': stats.neurons_by_type,
+            'avg_strength': stats.avg_strength,
+        }
+
     def get_network_visualization(self) -> str:
         """获取网络可视化"""
         viz = NetworkVisualizer()
