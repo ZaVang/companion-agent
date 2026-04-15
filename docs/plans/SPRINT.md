@@ -1,31 +1,31 @@
-# Sprint 13: 生产就绪优化 — Embedding/Reflection/PostgreSQL
+# Sprint 14: 代码质量提升 — 架构重构/文档整合/类型完善
 
 **状态**: 活跃
-**目标**: 解决生产环境关键问题：Embedding 加载超时、Reflection 属性暴露、PostgreSQL 持久化
+**目标**: 解决代码质量问题：MemorySystem臃肿、文档碎片化、类型提示不完整
 
 ---
 
 ## 任务清单
 
-- [x] 1. **T1-embedding-timeout**: Embedding 加载超时优化
-  - 给 `utils/model.py` 的 HTTP 请求加 timeout（5秒）
-  - 加载失败时优雅降级（返回 None，不阻塞）
-  - 可选：支持本地缓存路径配置
+- [ ] 1. **T1-memory-system-refactor**: MemorySystem 重构（Facade模式）
+  - 分析 `memory/system.py` 424行的职责划分
+  - 设计 Facade 接口，保持对外API不变
+  - 拆分为：`MemorySystemFacade` + 内部模块协调器
+  - 确保所有测试通过，无 breaking changes
 
-- [x] 2. **T2-reflection-attribute**: Reflection 暴露为 MemorySystem 属性
-  - 添加 `ms.reflection: ReflectionTrigger` 属性
-  - 暴露 `ms.trigger_reflection()` 便捷方法
-  - 可选：集成到 `add_memory()` 后的自动检测
+- [ ] 2. **T2-docs-consolidation**: Sprint文档整合到Chronicle
+  - 合并 `docs/orch/sprint8/`、`sprint9/`、`sprint10/` 到 `chronicle.md`
+  - 统一格式，保留关键决策和pitfalls
+  - 删除冗余目录，保持docs整洁
 
-- [x] 3. **T3-postgres-storage**: PostgreSQL 持久化层
-  - 创建 `memory/storage/postgres.py` 模块
-  - 实现 `PostgresStorage` 类（替代/补充 JSON）
-  - 支持神经元、Engram、Embedding 的 CRUD
-  - 迁移脚本：JSON → PostgreSQL
+- [ ] 3. **T3-type-hints**: PostgreSQL存储层类型提示完善
+  - 检查 `memory/storage/postgres.py` 所有helper函数
+  - 补充参数类型、返回类型、docstring
+  - 确保mypy类型检查通过（可选）
 
-- [x] 4. **T4-tests-green**: 全部测试通过
-  - 新增 `tests/test_postgres_storage.py`
-  - `pytest tests/ -v` 全部通过（无 regression）
+- [ ] 4. **T4-tests-green**: 全部测试通过
+  - 运行 `pytest tests/ -v` 确保全部通过
+  - 新增必要的测试覆盖
 
 ---
 
@@ -33,52 +33,66 @@
 
 | # | 标准 | 验证方式 |
 |---|------|----------|
-| 1 | Embedding 超时 5s 内返回 | `timeout 5 python3 -c "from memory.system import MemorySystem; ms=MemorySystem(); ms.add_memory('test')"` 不卡住 |
-| 2 | `ms.reflection` 属性存在 | `python3 -c "from memory.system import MemorySystem; ms=MemorySystem(); print('reflection:', hasattr(ms, 'reflection'))"` |
-| 3 | PostgreSQL 存储能读写 | `python3 -m pytest tests/test_postgres_storage.py -v` 通过 |
-| 4 | 全部测试通过 | `python3 -m pytest tests/ -v` 显示全部 passed |
+| 1 | MemorySystem行数 < 200 | `wc -l memory/system.py` |
+| 2 | Facade接口稳定 | `pytest tests/` 全部通过 |
+| 3 | docs/orch/下无sprint目录 | `ls docs/orch/` 只有通用文件 |
+| 4 | postgres.py类型完整 | 代码review + mypy检查 |
 
 ---
 
-## 验收命令
+## Multi-Ralph 流程
 
-```bash
-cd /tmp/companion-agent-test
+本Sprint按照三角色循环执行：
 
-# T1: Embedding 超时测试（应在 5s 内完成）
-timeout 5 python3 -c "
-from memory.system import MemorySystem
-ms = MemorySystem()
-# 模拟 embedding 加载失败场景
-from memory.embedding import EmbeddingManager
-original = EmbeddingManager._try_load_model
-EmbeddingManager._try_load_model = lambda self: setattr(self, '_available', False) or None
-n = ms.add_memory('test', event_type='chat', actor='user')
-print('Embedding timeout OK, neuron created:', n.event_id)
-EmbeddingManager._try_load_model = original
-"
+### Phase 1: Ralph (设计者)
+- [ ] 分析现有代码结构
+- [ ] 设计重构方案
+- [ ] 更新 pitfall 知识库
+- [ ] 输出：详细设计文档
 
-# T2: Reflection 属性检查
-python3 -c "
-from memory.system import MemorySystem
-ms = MemorySystem()
-print('has reflection:', hasattr(ms, 'reflection'))
-if hasattr(ms, 'reflection'):
-    print('reflection type:', type(ms.reflection).__name__)
-"
+### Phase 2: Ralph (实现者)
+- [ ] 按设计文档实施重构
+- [ ] 编写代码、更新文档
+- [ ] 本地测试通过
+- [ ] 输出：可运行的代码
 
-# T3: PostgreSQL 存储测试
-python3 -m pytest tests/test_postgres_storage.py -v --tb=short 2>&1 | tail -10
-
-# T4: 全部测试
-python3 -m pytest tests/ -v --tb=short 2>&1 | tail -5
-```
+### Phase 3: Ralph (验证者)
+- [ ] 运行完整测试套件
+- [ ] 检查验收标准
+- [ ] 记录遗留问题
+- [ ] 输出：验收报告
 
 ---
 
 ## 依赖关系
 
-- T1 (Embedding) 无依赖
-- T2 (Reflection) 无依赖  
-- T3 (PostgreSQL) 依赖 T1（存储层需要 embedding 不阻塞才能正常初始化）
-- T4 (Tests) 依赖 T1、T2、T3
+```
+T1 (重构) ──┐
+            ├──> T4 (测试)
+T2 (文档) ──┤
+            │
+T3 (类型) ──┘
+```
+
+T1、T2、T3 可并行执行，最后统一验收。
+
+---
+
+## 风险与缓解
+
+| 风险 | 缓解措施 |
+|------|----------|
+| 重构破坏现有功能 | 保持对外API不变，先写测试 |
+| 文档丢失关键信息 | 合并前备份，保留原目录结构在git历史 |
+| 类型提示导致运行时错误 | 使用TYPE_CHECKING，运行时不加载 |
+
+---
+
+## 预计工时
+
+- T1: 2小时
+- T2: 30分钟
+- T3: 30分钟
+- T4: 15分钟
+
+**总计**: 约3小时
