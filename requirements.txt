@@ -1,37 +1,57 @@
-# Core
-torch>=2.0.0
+# ===========================================
+# Engram Memory System - Python Dependencies
+# ===========================================
+# Python version: >=3.10, <3.14 (tested on 3.13)
+# 
+# Install options:
+#   pip install -r requirements.txt              # Full installation
+#   pip install -r requirements-core.txt         # Core only (no ML models)
+# ===========================================
+
+# ============ Core Dependencies ============
+# Required for basic memory system functionality
+
 numpy>=1.24.0
 scipy>=1.10.0
 pydantic>=2.0.0
-
-# API
-fastapi>=0.100.0
-uvicorn>=0.23.0
-
-# ML/NLP
-transformers>=4.30.0
-sentencepiece>=0.1.99
-openai>=1.0.0
-text2vec
-jieba
-gensim
-
-# Vector DB
-pymilvus>=2.3.0
-
-# UI
-gradio>=4.0.0
-
-# Scheduling
-APScheduler>=3.10.0
-
-# ONNX
-onnxruntime>=1.15.0
-
-# Memory System dependencies
 python-dateutil>=2.8.0
 typing-extensions>=4.5.0
 
-# Testing
+# ============ API Framework ============
+fastapi>=0.100.0
+uvicorn>=0.23.0
+
+# ============ Testing ============
 pytest>=7.0.0
 pytest-cov>=4.0.0
+pytest-asyncio>=0.21.0
+
+# ============ ML/NLP Dependencies ============
+# These are optional - lazy loaded when needed
+# If torch is not installed, the system will still work
+# but embedding features will be disabled
+
+torch>=2.0.0                    # Optional: for text2vec embedding model
+transformers>=4.30.0            # Optional: for BGE embedding model
+sentencepiece>=0.1.99           # Optional: for tokenization
+openai>=1.0.0                   # Optional: for OpenAI API calls
+
+# Chinese NLP (optional - may have Python 3.13 compatibility issues)
+# Install separately if needed: pip install jieba gensim
+# text2vec                       # Optional: Chinese text embedding
+# jieba                          # Optional: Chinese word segmentation
+# gensim                         # Optional: Word2Vec model
+
+# ============ ONNX Runtime ============
+# CPU-only inference, no GPU required
+onnxruntime>=1.15.0
+
+# ============ Vector Database ============
+# Optional: for large-scale memory storage
+pymilvus>=2.3.0
+
+# ============ UI ============
+gradio>=4.0.0
+
+# ============ Scheduling ============
+APScheduler>=3.10.0

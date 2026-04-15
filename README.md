@@ -1,7 +1,7 @@
 # Engram 记忆系统
 
-**版本**: 1.0.0  
-**更新时间**: 2026-04-14
+**版本**: 1.1.0  
+**更新时间**: 2026-04-15
 
 Engram 是一个受神经科学启发的 AI 伴侣记忆系统，模拟人类记忆的形成、巩固、检索和遗忘机制。
 
@@ -41,11 +41,40 @@ Engram 是一个受神经科学启发的 AI 伴侣记忆系统，模拟人类记
 
 ## 快速开始
 
+### 环境要求
+
+| 项目 | 要求 |
+|------|------|
+| Python | >= 3.10, < 3.14 (tested on 3.13) |
+| OS | Linux / macOS / Windows |
+| 内存 | >= 4GB (推荐 8GB+) |
+
 ### 安装
 
+**方式一：完整安装（包含ML模型）**
 ```bash
 pip install -r requirements.txt
 ```
+
+**方式二：核心安装（无ML模型，更轻量）**
+```bash
+pip install numpy scipy pydantic fastapi uvicorn pytest
+```
+
+> 注意：text2vec、jieba、gensim 为可选依赖，需要时单独安装：
+> ```bash
+> pip install torch text2vec jieba gensim
+> ```
+
+### Python 3.13 兼容性
+
+本项目已适配 Python 3.13，主要变更：
+- `text2vec` 和 `jieba` 采用延迟导入（lazy import）
+- 模型加载失败时系统会优雅降级，不会崩溃
+- 如遇到 `pkgutil.ImpImporter` 错误，请升级 jieba：
+  ```bash
+  pip install --upgrade jieba
+  ```
 
 ### 基本使用
 
@@ -303,6 +332,53 @@ companion-agent/
 - **[数据模型](docs/DATA_MODEL.md)** - 核心数据结构、字段说明
 - **[使用指南](docs/USAGE.md)** - 安装、基础/高级用法、最佳实践
 - **[Sprint 记录](docs/SPRINTS.md)** - 每个 Sprint 的目标、决策、限制
+
+---
+
+## 依赖说明
+
+### 核心依赖（必须安装）
+
+| 包名 | 版本 | 用途 |
+|------|------|------|
+| numpy | >=1.24.0 | 数值计算 |
+| scipy | >=1.10.0 | 科学计算 |
+| pydantic | >=2.0.0 | 数据验证 |
+| fastapi | >=0.100.0 | API 框架 |
+| pytest | >=7.0.0 | 测试框架 |
+
+### 可选依赖（按需安装）
+
+| 包名 | 版本 | 用途 | 备注 |
+|------|------|------|------|
+| torch | >=2.0.0 | 深度学习 | text2vec 需要 |
+| text2vec | latest | 中文文本嵌入 | 首次加载需下载模型 |
+| jieba | latest | 中文分词 | Word2Vec 模式需要 |
+| gensim | latest | Word2Vec | 可选的轻量嵌入方案 |
+| pymilvus | >=2.3.0 | 向量数据库 | 大规模存储需要 |
+
+### 常见问题
+
+**Q: ImportError: No module named 'torch'**
+
+A: torch 是可选依赖。如果不需要 embedding 功能，可以忽略此警告。如需使用：
+```bash
+pip install torch
+```
+
+**Q: AttributeError: module 'pkgutil' has no attribute 'ImpImporter'**
+
+A: 这是 Python 3.12+ 和旧版 jieba 的兼容性问题：
+```bash
+pip install --upgrade jieba
+```
+
+**Q: embedding 功能不可用**
+
+A: 检查以下内容：
+1. 确认 torch 已安装
+2. 确认模型文件存在于 `models/text2vec-base-chinese-paraphrase/`
+3. 查看 `_available` 属性：`manager._available`
 
 ---
 
