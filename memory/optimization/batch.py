@@ -152,12 +152,12 @@ class BatchProcessor:
                         neuron.strength = new_strength
 
                 result.add_success({
-                    'neuron_id': getattr(neuron, 'event_id', neuron.get('id', 'unknown')),
+                    'neuron_id': getattr(neuron, 'event_id', getattr(neuron, 'id', 'unknown')),
                     'old_strength': old_strength,
                     'new_strength': new_strength
                 })
             except Exception as e:
-                result.add_failure(e, {'neuron_id': getattr(neuron, 'event_id', neuron.get('id', 'unknown'))})
+                result.add_failure(e, {'neuron_id': getattr(neuron, 'event_id', getattr(neuron, 'id', 'unknown'))})
         
         result.total_time_ms = (time.time() - start_time) * 1000
         return result

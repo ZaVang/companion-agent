@@ -1,17 +1,20 @@
 import json
 import os
 from pathlib import Path
-from typing import List, Dict, Set, Union, Optional
+from typing import List, Dict, Set, Union, Optional, TYPE_CHECKING
 from functools import lru_cache
 from pydantic import BaseModel, UUID1, Field, ConfigDict
 import numpy as np
 import uuid
-from text2vec import SentenceModel
 from sklearn.metrics.pairwise import cosine_similarity
 
 from utils.path import EMBEDDING_DB_DIR
 from utils.model import get_embedding_model, BGEModel, Word2VecModel
 from utils.common import EMBEDDING_CACHE_SIZE
+
+# Lazy import for text2vec to avoid torch dependency at module load
+if TYPE_CHECKING:
+    from text2vec import SentenceModel
 
 class EmbeddingManager(BaseModel):
     """ EmbeddingManager now use a dictionary with UUID keys.
@@ -19,7 +22,7 @@ class EmbeddingManager(BaseModel):
     Robustness: if model loading fails (e.g. missing model files),
     _available is set to False and embed() returns None instead of crashing.
     """
-    embedding_model: Union[SentenceModel, BGEModel, Word2VecModel, None] = None
+    embedding_model: Union["SentenceModel", BGEModel, Word2VecModel, None] = None
     registry: Set[UUID1] = Field(default_factory=set)
     _available: bool = True
 

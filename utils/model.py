@@ -1,13 +1,22 @@
-from typing import Literal, List, Dict
-from text2vec import SentenceModel
+from typing import Literal, List, Dict, TYPE_CHECKING
 from openai import AzureOpenAI
 from utils.template import DEFAULT_PROMPT
 import onnxruntime as ort
 from transformers import AutoTokenizer
 import os
 import numpy as np
-import jieba
-from gensim.models import KeyedVectors
+
+# Lazy imports to avoid dependency issues at module load
+if TYPE_CHECKING:
+    from text2vec import SentenceModel
+
+# Try to import jieba and gensim, but make them optional
+try:
+    import jieba
+    from gensim.models import KeyedVectors
+    _jieba_available = True
+except (ImportError, AttributeError):
+    _jieba_available = False
 
 GPT35_dict = {
     "api_version": "2023-03-15-preview",
@@ -94,6 +103,8 @@ class BGEModel:
         
 class Word2VecModel:
     def __init__(self, model_path) -> None:
+        if not _jieba_available:
+            raise ImportError("jieba or gensim not available, Word2VecModel cannot be used")
         self.model = KeyedVectors.load_word2vec_format(model_path+'tencent-ailab-embedding-zh-d100-v0.2.0-s.txt', binary=False)
         self.stopwords = self.load_stopwords(model_path+'/stopwords.txt')
         
@@ -139,6 +150,8 @@ def get_embedding_model(model_name='text2vec', timeout: int = 5):
 
     try:
         if model_name=='text2vec':
+            # Lazy import to avoid torch dependency at module load
+            from text2vec import SentenceModel
             model = SentenceModel('models/text2vec-base-chinese-paraphrase')
         elif model_name=='bge':
             model = BGEModel('models/DPR/bge-large/bge.onnx')
